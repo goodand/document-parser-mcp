@@ -2,7 +2,7 @@
 
 HWP·HWPX·PDF를 텍스트·문단·표·셀·시각 근거로 구조화하는 범용 MCP 서버입니다. HWP 계열의 원본 문단·셀 경계 보존과 Windows 한컴 변환을 지원합니다. 정부 예산서는 개발·평가에 사용한 적용 사례이며 입력 도메인 제한이 아닙니다.
 
-Python 패키지와 실행 명령은 호환성을 위해 `govparse`, `govparse-mcp`를 유지합니다. 반입 버전은 `0.1.1`입니다. 작성자: `chatgpt_gpt6`(repo 반입·경로 이식성·검증 기록). 기존 코드의 저자 표기는 각 파일을 따릅니다.
+Python 패키지와 실행 명령은 호환성을 위해 `govparse`, `govparse-mcp`를 유지합니다. 현재 버전은 `0.2.0`입니다. 작성자: `chatgpt_gpt6`(제품 연결·검증 기록). 재사용한 실험 코드의 출처는 `provenance/c3-source-reuse.json`에 기록했습니다.
 
 ## 설치
 
@@ -18,6 +18,7 @@ uv run govparse-mcp
 | 기능 | 실행 조건 |
 |---|---|
 | HWP/HWPX 원본 문단·표·셀 구조 | `rhwp-python` |
+| HWP 기본 C3 조합 | 패키지에 포함된 native decoder + pyhwp + rhwp + 변환 계보가 검증된 PDF |
 | PDF 구조 파싱 | opendataloader-pdf, Java 11 이상 |
 | PDF 표 복구·페이지 이미지 | PyMuPDF |
 | HWP/HWPX → PDF 변환 | Windows + 한컴오피스 + COM |
@@ -30,12 +31,16 @@ OCR 모델·한컴오피스·JDK 바이너리·문서 코퍼스는 이 저장소
 1. `doctor`로 사용할 수 있는 엔진을 확인합니다.
 2. `prepare_corpus(source_dir="C:/documents")`로 문서 목록을 준비합니다.
 3. `list_documents()`에서 정규화된 이름을 확인합니다.
-4. HWP/HWPX 원본 구조는 `parse_hwp_source`, PDF 구조는 `parse_document`를 사용합니다. HWP를 PDF로 처리하려면 먼저 `convert_hwp`가 필요합니다.
+4. HWP는 `convert_hwp` 후 `get_best_available(doc_name, output_kind="structure")`를 기본으로 사용합니다. `tables`와 기본 `rag`도 C3 조합을 실행합니다. HWPX 원본 구조는 `parse_hwp_source`, PDF 구조는 `parse_document`를 사용합니다.
 5. `get_tables`, `get_visual_evidence`, `get_hwp_element`, `search_hwp_source`로 근거를 조회하고, 필요한 경우 RAG JSONL을 내보냅니다.
 
 `get_best_available`은 출력 목적에 맞는 경로를 안내·실행합니다. `recover_pdf_table_text`의 OCR 결과와 `diagnose_hwp_pdf_tables`의 표 위험 진단은 검토 후보이며 의미적 정확성이나 원문과의 대응을 자동 승인하지 않습니다.
 
-HWP/HWPX 원본 위치와 PDF 페이지는 서로 다른 좌표계입니다. 변환 계보·해시를 유지하며, 그림·표 제목·단위·각주·이어짐의 대응이 입증되지 않으면 판단을 보류합니다. 정부 예산서에서 얻은 기존 수치를 모든 문서의 정확도로 일반화하지 않습니다. [C3 검토 방법 Skill](skills/c3-hwp-parsing/SKILL.md)은 선택적으로 참고할 수 있습니다.
+HWP/HWPX 원본 위치와 PDF 페이지는 서로 다른 좌표계입니다. 변환 계보·해시를 유지하며, 그림·표 제목·단위·각주·이어짐의 대응이 입증되지 않으면 판단을 보류합니다. 정부 예산서에서 얻은 기존 수치를 모든 문서의 정확도로 일반화하지 않습니다. [C3 검토 방법 Skill](skills/c3-hwp-parsing/SKILL.md)을 HWP 기본 검토 절차로 사용합니다.
+
+0.2.0은 기존 C3 실험의 native/pyhwp/rhwp 비교와 control consumer 표현 생성을 제품에 연결합니다. 매 요청마다 독립 실행 디렉터리에 원시 출력, 검증 결과, `combined_document.json`을 보존합니다. C2의 페이지별 대응과 C3의 의미 판단은 자동 완료되지 않습니다. `artifacts_ready: true`와 `status: held`가 함께 반환될 수 있으며 `complete`는 false입니다. `phases`, `mismatches`, `next_action`을 확인하고 원문 화면 검토를 이어가세요. PDF가 없거나 계보가 불명확하면 `convert_hwp`를 안내하며 C3를 성공했다고 표시하지 않습니다.
+
+`parse_hwp_source` 등 개별 엔진 도구와 명시적인 `rag_mode="text_only_structure_aware"`는 기존 진단·텍스트 경로를 유지합니다. 기본 C3 RAG는 문단별 JSONL이며 표 관계와 control 표현은 함께 반환하는 C3 문서를 참조합니다. 가져온 C3 JSON도 해시 확인만으로 의미 검증 완료로 간주하지 않습니다.
 
 ## 경로
 

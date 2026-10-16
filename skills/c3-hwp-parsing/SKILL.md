@@ -1,9 +1,11 @@
 ---
 name: c3-hwp-parsing
-description: Use the C3 combination method to parse or review an HWP document by preserving native paragraph and table anchors, comparing pyhwp and rhwp outputs, and adding source-verified visual context and control representations. Use when the user requests C3 parsing or wants to apply the proven combination to another HWP; ordinary HWP lookup or Hancom API use alone does not require it.
+description: Default HWP parsing and review method for document-parser-mcp. Preserve native paragraph and table anchors, compare pyhwp and rhwp outputs, and add source-verified visual context and control representations. Use get_best_available for the default C3 product path and inspect held cases before claiming completion.
 ---
 
 # C3 HWP parsing
+
+Product integration (0.2.0), author: `chatgpt_gpt6`: use `convert_hwp` to establish PDF lineage, then `get_best_available` with structure, tables, or default rag. The product reuses the experimental C1 builder and C3 control projection. Automatic artifacts do not complete C2 local visual correspondence or C3 semantic interpretation. READ phase statuses, verification and mismatches, then review the actual source images as needed. Never treat `artifacts_ready` as human approval or full C3 completion. Explicit native-only tools and HWPX/PDF routes retain their separate scope.
 
 작성자: `chatggpt_gpt6_extrahigh`
 

@@ -1,0 +1,28 @@
+{
+  "author": "chatgpt_gpt6",
+  "sources": [
+    {
+      "path": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\tmp\\claude_silver\\hwp.py",
+      "sha256": "2fc0ce63d257c42dfbbc652698255aeb04759fdef496ba2ffc391593e1a51b4c"
+    },
+    {
+      "path": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\tmp\\merge_stage1\\probe.py",
+      "sha256": "9f7c5767ad0f58c7c69fe77d8b12f42e6e1b9e723eae9a33ba5462180040d5d5"
+    },
+    {
+      "path": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\docs\\experiments\\a1-a7\\mss_c3_v1\\build.py",
+      "sha256": "ad279711d785604eddf3f82fcb8f41751c6839c59b83f7cc9d72c2d7f6731b9d"
+    },
+    {
+      "path": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\docs\\experiments\\a1-a7\\mss_c3_v1\\controls.py",
+      "sha256": "671ae626015c3fb4d05adcce41668e02f2ea6758a767cfab694c983d4c8cf972"
+    }
+  ],
+  "adaptations": [
+    "Explicit source, PDF, output and pyhwp arguments",
+    "Fresh isolated run directory; no shared partial-cache reuse",
+    "Bundled native decoder without stdout mutation",
+    "Removed document-specific control inventory",
+    "Count mismatch stops ordinal mapping"
+  ]
+}

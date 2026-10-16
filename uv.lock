@@ -285,7 +285,7 @@ wheels = [
 
 [[package]]
 name = "govparse"
-version = "0.1.1"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "lxml" },
@@ -294,6 +294,7 @@ dependencies = [
     { name = "opendataloader-pdf" },
     { name = "pandas" },
     { name = "pydantic" },
+    { name = "pyhwp" },
     { name = "pymupdf" },
     { name = "pypdf" },
     { name = "python-slugify" },
@@ -334,6 +335,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=2.2" },
     { name = "pdf2image", marker = "extra == 'ocr'", specifier = ">=1.17" },
     { name = "pydantic", specifier = ">=2.10" },
+    { name = "pyhwp", specifier = ">=0.1b15" },
     { name = "pyhwp", marker = "extra == 'hwp-fallback'", specifier = ">=0.1b15" },
     { name = "pymupdf", specifier = ">=1.28.2" },
     { name = "pypdf", specifier = ">=5.1" },

@@ -1,0 +1,69 @@
+{
+  "author": "chatgpt_gpt6",
+  "version": "0.2.0",
+  "date": "2026-10-16",
+  "tests": {
+    "passed": 157,
+    "skipped": 1,
+    "skip_reason": "non-Windows conversion guard on Windows"
+  },
+  "fail_first": "default HWP without C3 artifact previously returned rhwp_source; new test failed before routing patch",
+  "real_stdio": {
+    "route": "c3",
+    "complete": false,
+    "status": "held",
+    "artifacts_ready": true,
+    "counts": {
+      "sections": 46,
+      "paragraphs": 71846,
+      "tables": 1547,
+      "cells": 49403,
+      "pdf_pages": 744
+    },
+    "phases": {
+      "C1": "measured_with_holds",
+      "C2": "lineage_verified_local_links_held",
+      "C3": "consumer_projection_checked_semantics_held"
+    },
+    "mismatch_count": 18,
+    "control_counts": {
+      "paragraphs": 627,
+      "formulas": 25,
+      "tcps": 0,
+      "fixwidth_spaces": 906,
+      "nonbreak_spaces": 0,
+      "annotations": 931,
+      "pass_paragraphs": 627,
+      "held_paragraphs": 0
+    },
+    "core_unchanged": true,
+    "versions": {
+      "govparse": "0.2.0",
+      "pyhwp": "0.1b15",
+      "rhwp-python": "0.8.1"
+    },
+    "source_sha256": "160bf3aed9e9a6f946c53b6d8dfdcc28a2a568d48ef719190e617459d9cd571f",
+    "pdf_sha256": "3a71a82005b4ddd6675235b6906f7eae6778480b712c75a75c864e7bd626865f"
+  },
+  "source_case": "MSS volume 2, separate from generic builder development volume 1",
+  "verification": {
+    "native_xml_mismatch_count": 18,
+    "table_structure_verified": 1547,
+    "rhwp_cell_projection_equal": 49104,
+    "rhwp_cell_comparison_holds": 299,
+    "formula_fields": 25,
+    "all_visual_semantics_verified": false
+  },
+  "repairs": [
+    "Missing hashlib import in extracted native probe fixed after real run failure",
+    "MCP subprocess stdin detached using DEVNULL after observed stall",
+    "Rhwp table count mismatch disables ordinal pointers for section"
+  ],
+  "limits": [
+    "C2 local page links and C3 visual/control meanings require source review",
+    "Ordinal alignment is a candidate; duplicate/empty paragraph identities not independently established",
+    "Fresh per-request runs; no incremental cache optimization",
+    "Existing desktop MCP registration still targets the original checkout"
+  ],
+  "reproduction": "python scripts/smoke_c3.py --corpus <source-lineaged-corpus> --document <normalized-name.hwp> --report <outside-repository/report.json>"
+}

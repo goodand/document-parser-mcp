@@ -35,7 +35,7 @@ from mcp.server.fastmcp import FastMCP
 
 from .config import find_java
 
-mcp = FastMCP("govparse")
+mcp = FastMCP("govparse", instructions="For HWP use get_best_available as the default C3 entry point. Inspect phase status and held cases; native-only tools are diagnostics, not C3 completion. PDF and HWPX retain their format-specific routes.")
 
 # --- 실측으로 고정된 값 (근거는 모듈 docstring) ---
 SNAP_TOLERANCE = 1
@@ -912,7 +912,8 @@ def get_best_available(
     """실제 파일 형식과 원하는 출력에 맞는 검증된 경로를 실행한다.
 
     output_kind: structure | tables | visual | rag. HWP의 C3 결과를 이미
-    만들어 뒀다면 c3_document_path를 지정한다. 없으면 원본 rhwp 구조를 쓴다.
+    만들어 뒀다면 c3_document_path를 지정한다. 없으면 기본 C3 조합을 실행한다.
+    C3는 단계별 검증 범위를 반환하며 시각적 의미가 미검증이면 held를 유지한다.
     PDF 표·본문은 활성 ODL 파싱 결과를 사용한다. visual은 PDF 화면 렌더와
     ODL 표·이미지 후보를 함께 제공하되 대상 일치·크롭 완전성은 판단불가다.
     준비되지 않은 PDF 변환/파싱은 필요한 기존 MCP 도구를 반환한다.
@@ -963,6 +964,13 @@ def get_best_available(
                         error="PDF tables에는 파일 쪽 page>=1이 필요합니다")
 
     if actual in {"hwp", "hwpx"} and output_kind in {"structure", "tables", "rag"}:
+        if actual == "hwp" and c3_document_path and output_kind == "rag":
+            return response(status="held", route="c3", complete=False, **base,
+                            reason="Imported C3 RAG is not supported; omit c3_document_path to generate source-bound C3 RAG")
+        if actual == "hwp" and not c3_document_path and rag_mode == "default":
+            from .c3_pipeline import run_c3
+            result = run_c3(src, root, output_kind)
+            return response(**(base | result))
         if c3_document_path and actual == "hwp" and output_kind != "rag":
             try:
                 from .conversion_lineage import verify_conversion
@@ -983,7 +991,8 @@ def get_best_available(
                 if lineage["status"] != "verified":
                     return response(status="held", route="c3", **base,
                                     reason="C3 HWP/PDF 변환 계보 미확정", lineage=lineage)
-                return response(status="ready", route="c3", **base,
+                return response(status="held", route="c3", complete=False, **base,
+                                reason="Imported C3 source hashes checked; semantic review not established",
                                 c3_document=str(c3_path), c3_sha256=sha256_of(c3_path),
                                 counts=meta.get("counts"),
                                 page_mapping="unassigned_for_most_source_elements")

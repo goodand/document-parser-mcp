@@ -97,12 +97,18 @@ def test_best_available_dispatch_preserves_default_and_selects_new_mode(tmp_path
     text = json.loads(mcp_server.get_best_available(
         src.name, "rag", rag_mode="text_only_structure_aware",
     ))
-    assert default["status"] == text["status"] == "ready"
-    assert default["result"]["projection"] == "original"
+    assert text["status"] == "ready"
+    if fmt == "hwp":
+        assert default["status"] == "held"
+        assert default["route"] == "c3"
+        assert default["next_tool"] == "convert_hwp"
+    else:
+        assert default["status"] == "ready"
+        assert default["result"]["projection"] == "original"
     assert "rag_mode" not in default
     assert text["result"]["projection"] == "text"
     assert text["rag_mode"] == "text_only_structure_aware"
-    assert calls == [("default", src.name), ("text", src.name)]
+    assert calls == ([("default", src.name)] if fmt == "hwpx" else []) + [("text", src.name)]
 
 
 def test_best_available_text_mode_rejects_pdf_and_invalid_modes(tmp_path, monkeypatch):
