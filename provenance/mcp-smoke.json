@@ -1,0 +1,48 @@
+{
+  "author": "chatgpt_gpt6",
+  "date": "2026-10-16",
+  "package_version": "0.1.1",
+  "module_path": "C:\\Users\\INTEC\\Documents\\Codex\\2026-10-07\\path-cwd-window-pc-github-repo\\work\\document-parser-mcp\\src\\govparse\\mcp_server.py",
+  "source_kind": "PyMuPDF-generated one-page PDF, no original source document",
+  "source_sha256": "74e23187243d3a57d1a710f73f918d28d3f09f1383321945695126f0dcd3a8b5",
+  "tool_count": 18,
+  "tool_names": [
+    "convert_hwp",
+    "diagnose_hwp_pdf_tables",
+    "doctor",
+    "export_hwp_rag_chunks",
+    "export_rag_chunks",
+    "export_structure_aware_text_chunks",
+    "extract_table_images",
+    "get_best_available",
+    "get_hwp_element",
+    "get_tables",
+    "get_visual_evidence",
+    "inspect_c3_odl_figures",
+    "list_documents",
+    "parse_document",
+    "parse_hwp_source",
+    "prepare_corpus",
+    "recover_pdf_table_text",
+    "search_hwp_source"
+  ],
+  "completed_calls": [
+    "doctor",
+    "prepare_corpus",
+    "list_documents",
+    "parse_document",
+    "get_tables",
+    "get_visual_evidence",
+    "export_rag_chunks"
+  ],
+  "synthetic_pdf_parse": "one successful Java/ODL unit; Alpha and 42 found in returned table JSON",
+  "rag_records": 2,
+  "source_unchanged": true,
+  "not_executed": [
+    "real HWP/HWPX native parsing",
+    "Hancom COM conversion",
+    "real OCR model inference",
+    "arbitrary document quality evaluation"
+  ],
+  "temporary_inputs_outputs": "Generated in temporary directory and removed at completion"
+}

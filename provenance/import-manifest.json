@@ -1,0 +1,415 @@
+{
+  "author": "chatgpt_gpt6",
+  "date": "2026-10-16",
+  "source_root": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp",
+  "publication": "Only code, tests, package metadata and authored Skill selected; no input documents, converted documents, corpora, models, .env or outputs. Existing Windows source/runtime preserved.",
+  "files": [
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\src\\govparse\\c3_odl_figures.py",
+      "target": "src/govparse/c3_odl_figures.py",
+      "source_sha256": "ffe390f402965a9912762c35930f24aa5e7a9d430d14f14e826c528831ac65f4",
+      "import_sha256": "ffe390f402965a9912762c35930f24aa5e7a9d430d14f14e826c528831ac65f4",
+      "published_sha256": "ffe390f402965a9912762c35930f24aa5e7a9d430d14f14e826c528831ac65f4",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\src\\govparse\\census_rules.py",
+      "target": "src/govparse/census_rules.py",
+      "source_sha256": "5d4c2c11cb19cdc38e2d7acbeb9bc39819aa3c23eba336b91fc3f6c208ee07ff",
+      "import_sha256": "1f60e874d3eb80a1b03e0746c3a13a9476a0e515081f7af365d555da865cdfa6",
+      "published_sha256": "caba60b90117284e8f5d249870f5eab992b87f94dc8b7b24b72fe9f463a88e57",
+      "changed_since_import": true
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\src\\govparse\\chunking.py",
+      "target": "src/govparse/chunking.py",
+      "source_sha256": "f53b98ec9af6ec9afa6e3eed0a4d67323331a1bb1b48f0667021cad5277e0859",
+      "import_sha256": "e169bf0a2938907949053cdeb9a6ee0a3e42e4f7c4608157072e8d6d02975a7d",
+      "published_sha256": "e169bf0a2938907949053cdeb9a6ee0a3e42e4f7c4608157072e8d6d02975a7d",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\src\\govparse\\cli.py",
+      "target": "src/govparse/cli.py",
+      "source_sha256": "9be9791ed26efc54ffd91b2c69b37ebd34e5a154fdcbfb88c09a4b366db3f520",
+      "import_sha256": "ff32d88cbffd154381eb4f5fdf8bb1af707d6039836fa5ac1f351bc053dc4860",
+      "published_sha256": "b955db1c88fd2629645cc480c24bdc847fd2347cbd8a974876b3a7c2b696878f",
+      "changed_since_import": true
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\src\\govparse\\config.py",
+      "target": "src/govparse/config.py",
+      "source_sha256": "3c57cd8fcef06815513e814820e9f9017b3c5e3dd6f6384a39c6d7e3b6ee4238",
+      "import_sha256": "ca6f05a5affbb4b076fb6d602237f67a515ed3c0355331d5c88bd1a0bc733ccf",
+      "published_sha256": "cd771d21be86171071c5eea7fd6e5b09804edf425319bfb0791f68e24f580b63",
+      "changed_since_import": true
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\src\\govparse\\conversion_lineage.py",
+      "target": "src/govparse/conversion_lineage.py",
+      "source_sha256": "313bb795cdbe5461a98ec616459e3fe0de131a1a722219e4b1a7b24f8b749a25",
+      "import_sha256": "313bb795cdbe5461a98ec616459e3fe0de131a1a722219e4b1a7b24f8b749a25",
+      "published_sha256": "313bb795cdbe5461a98ec616459e3fe0de131a1a722219e4b1a7b24f8b749a25",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\src\\govparse\\convert.py",
+      "target": "src/govparse/convert.py",
+      "source_sha256": "a05df1e0d0a525b7acc3de51d72b0908d8ef25fbf4ed6da68719d252571a748a",
+      "import_sha256": "54517465e6c2219f7d37fe1192b419a94638eb0d3e63bd8491264e58028a984c",
+      "published_sha256": "54517465e6c2219f7d37fe1192b419a94638eb0d3e63bd8491264e58028a984c",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\src\\govparse\\extract.py",
+      "target": "src/govparse/extract.py",
+      "source_sha256": "94eb63768636c5dfc442a174ca2247d1f0453247efa4a133c88defadc422e39c",
+      "import_sha256": "a3ff6a43fb2899a8410fad7b217675a6dbe71537aa8f2f3a34406302bde9322d",
+      "published_sha256": "a3ff6a43fb2899a8410fad7b217675a6dbe71537aa8f2f3a34406302bde9322d",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\src\\govparse\\figures.py",
+      "target": "src/govparse/figures.py",
+      "source_sha256": "419edbc09169d62f0c103c281e2fcbb7abacaa46308e8f04d22f3289d2cb46d5",
+      "import_sha256": "419edbc09169d62f0c103c281e2fcbb7abacaa46308e8f04d22f3289d2cb46d5",
+      "published_sha256": "419edbc09169d62f0c103c281e2fcbb7abacaa46308e8f04d22f3289d2cb46d5",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\src\\govparse\\hwp_rag.py",
+      "target": "src/govparse/hwp_rag.py",
+      "source_sha256": "a14c67eb45230e86f0c5bddda3478546ac37eda28bbebb9042ab7e50fed95cd1",
+      "import_sha256": "a14c67eb45230e86f0c5bddda3478546ac37eda28bbebb9042ab7e50fed95cd1",
+      "published_sha256": "a14c67eb45230e86f0c5bddda3478546ac37eda28bbebb9042ab7e50fed95cd1",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\src\\govparse\\hwp_source.py",
+      "target": "src/govparse/hwp_source.py",
+      "source_sha256": "dfef80cc3100fb472017b7d72c65bb80d9b272070cf0d988d1deb819ca711454",
+      "import_sha256": "dfef80cc3100fb472017b7d72c65bb80d9b272070cf0d988d1deb819ca711454",
+      "published_sha256": "dfef80cc3100fb472017b7d72c65bb80d9b272070cf0d988d1deb819ca711454",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\src\\govparse\\hwp_worker.py",
+      "target": "src/govparse/hwp_worker.py",
+      "source_sha256": "f64eb7a351cbc7bb21a0f7e1225692a1a2fdf59d4b72cb503b7b15c6a787a9d1",
+      "import_sha256": "1dde51a4e0b701974d886a52e02d399bac2e9121c895a6e1bd1caa61cde51ded",
+      "published_sha256": "1dde51a4e0b701974d886a52e02d399bac2e9121c895a6e1bd1caa61cde51ded",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\src\\govparse\\mcp_server.py",
+      "target": "src/govparse/mcp_server.py",
+      "source_sha256": "c02f074aaa449276e0767088dedf1e2eef4708df19413d06fa71ffb485bf585c",
+      "import_sha256": "c02f074aaa449276e0767088dedf1e2eef4708df19413d06fa71ffb485bf585c",
+      "published_sha256": "a44df23ace5bb00c011684e708d799d868868bc5b68aa431ffb60a4167957aaf",
+      "changed_since_import": true
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\src\\govparse\\native_toc.py",
+      "target": "src/govparse/native_toc.py",
+      "source_sha256": "fefc822c8ff83b8dcebdac25c5253a394b20ea80b51067d554332f71382c5734",
+      "import_sha256": "7f2dc7b10c7ecb26a880eb6a233d4f699044fd1c17038b921a7499d7722cf0a8",
+      "published_sha256": "7f2dc7b10c7ecb26a880eb6a233d4f699044fd1c17038b921a7499d7722cf0a8",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\src\\govparse\\normalize.py",
+      "target": "src/govparse/normalize.py",
+      "source_sha256": "d6c0e4cb085ad156268b572a1240b2da68895025b0cc8bcba980bd5aceb67253",
+      "import_sha256": "f84c1dd6b67e934e66816f7a54ee0090b19506a2601dcc1b7aa431bbf4e11dd4",
+      "published_sha256": "f84c1dd6b67e934e66816f7a54ee0090b19506a2601dcc1b7aa431bbf4e11dd4",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\src\\govparse\\parsed_store.py",
+      "target": "src/govparse/parsed_store.py",
+      "source_sha256": "607a1e5f7b9afb41f9518d8da39e5f4971203ce72185f0f3bdf490dad131e7e3",
+      "import_sha256": "607a1e5f7b9afb41f9518d8da39e5f4971203ce72185f0f3bdf490dad131e7e3",
+      "published_sha256": "607a1e5f7b9afb41f9518d8da39e5f4971203ce72185f0f3bdf490dad131e7e3",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\src\\govparse\\parse_diagnostics.py",
+      "target": "src/govparse/parse_diagnostics.py",
+      "source_sha256": "40ec3bae6a3d18bfde13c30ce73bc5e65c815decf13b031228db136a0284ee89",
+      "import_sha256": "40ec3bae6a3d18bfde13c30ce73bc5e65c815decf13b031228db136a0284ee89",
+      "published_sha256": "40ec3bae6a3d18bfde13c30ce73bc5e65c815decf13b031228db136a0284ee89",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\src\\govparse\\pdf_table_ocr.py",
+      "target": "src/govparse/pdf_table_ocr.py",
+      "source_sha256": "fa569e27aee70c53162c2cb21284ba629c750b66cecb003c4e669bfb8e336ec3",
+      "import_sha256": "fa569e27aee70c53162c2cb21284ba629c750b66cecb003c4e669bfb8e336ec3",
+      "published_sha256": "fa569e27aee70c53162c2cb21284ba629c750b66cecb003c4e669bfb8e336ec3",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\src\\govparse\\rag.py",
+      "target": "src/govparse/rag.py",
+      "source_sha256": "4c78e1fc80f571dcbeeedf19ca5f045b806cb26fa296a74815e3544bcefb4f75",
+      "import_sha256": "4c78e1fc80f571dcbeeedf19ca5f045b806cb26fa296a74815e3544bcefb4f75",
+      "published_sha256": "4c78e1fc80f571dcbeeedf19ca5f045b806cb26fa296a74815e3544bcefb4f75",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\src\\govparse\\structure_aware_text.py",
+      "target": "src/govparse/structure_aware_text.py",
+      "source_sha256": "5f2071c632e7b5f1382d638d61e61b764dc625f2d3c93059712f357254c6f249",
+      "import_sha256": "5f2071c632e7b5f1382d638d61e61b764dc625f2d3c93059712f357254c6f249",
+      "published_sha256": "5f2071c632e7b5f1382d638d61e61b764dc625f2d3c93059712f357254c6f249",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\src\\govparse\\table_identity.py",
+      "target": "src/govparse/table_identity.py",
+      "source_sha256": "ceb53a74b1ae705d4a955159946a6ade7c1d10a5d07f17215079c02febc42f08",
+      "import_sha256": "ceb53a74b1ae705d4a955159946a6ade7c1d10a5d07f17215079c02febc42f08",
+      "published_sha256": "ceb53a74b1ae705d4a955159946a6ade7c1d10a5d07f17215079c02febc42f08",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\src\\govparse\\toc_filter.py",
+      "target": "src/govparse/toc_filter.py",
+      "source_sha256": "cf2c48c713d29e3c6710bb25f516af721f50947a9d9c5592c80b9563cd5e8e4f",
+      "import_sha256": "2f5055df021c8e3f31c027c4fd78e53036429c0082dd3bbb4dc1c63e3e0b7d12",
+      "published_sha256": "2f5055df021c8e3f31c027c4fd78e53036429c0082dd3bbb4dc1c63e3e0b7d12",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\src\\govparse\\visual_evidence.py",
+      "target": "src/govparse/visual_evidence.py",
+      "source_sha256": "801975ce6f074f9e7ef3ac364ebe75def4db65149caa42b3fb834261a1c8e6c3",
+      "import_sha256": "801975ce6f074f9e7ef3ac364ebe75def4db65149caa42b3fb834261a1c8e6c3",
+      "published_sha256": "801975ce6f074f9e7ef3ac364ebe75def4db65149caa42b3fb834261a1c8e6c3",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\src\\govparse\\__init__.py",
+      "target": "src/govparse/__init__.py",
+      "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "import_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\tests\\test_census_rules.py",
+      "target": "tests/test_census_rules.py",
+      "source_sha256": "5b648bdfb7de8068f8bdbca130f6b9c8a56b883218025ba4f9aeaf536b82b82c",
+      "import_sha256": "f924730b0e68cd748307986789c5fdbe0878cddaa541479658117347334c7cf4",
+      "published_sha256": "f924730b0e68cd748307986789c5fdbe0878cddaa541479658117347334c7cf4",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\tests\\test_conversion_lineage.py",
+      "target": "tests/test_conversion_lineage.py",
+      "source_sha256": "e5cd60b2505e4e468a60be00d200a45d0e247e7e68091cca01dd9d93bcdb5322",
+      "import_sha256": "e5cd60b2505e4e468a60be00d200a45d0e247e7e68091cca01dd9d93bcdb5322",
+      "published_sha256": "e5cd60b2505e4e468a60be00d200a45d0e247e7e68091cca01dd9d93bcdb5322",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\tests\\test_hwp_rag.py",
+      "target": "tests/test_hwp_rag.py",
+      "source_sha256": "798490b48c151b791a8f9540d13d303550521681b6938c0ea8830b93f8f61039",
+      "import_sha256": "798490b48c151b791a8f9540d13d303550521681b6938c0ea8830b93f8f61039",
+      "published_sha256": "798490b48c151b791a8f9540d13d303550521681b6938c0ea8830b93f8f61039",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\tests\\test_hwp_source.py",
+      "target": "tests/test_hwp_source.py",
+      "source_sha256": "29211e1c5888f812c9e068bae6451edc9630030537f10b659a80aa99516d3458",
+      "import_sha256": "29211e1c5888f812c9e068bae6451edc9630030537f10b659a80aa99516d3458",
+      "published_sha256": "29211e1c5888f812c9e068bae6451edc9630030537f10b659a80aa99516d3458",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\tests\\test_mcp_contract.py",
+      "target": "tests/test_mcp_contract.py",
+      "source_sha256": "3ec5e19e346f54a20e539a176bdd00d9fa9bdab31ae8475c0e7068ea1a928dd2",
+      "import_sha256": "3ec5e19e346f54a20e539a176bdd00d9fa9bdab31ae8475c0e7068ea1a928dd2",
+      "published_sha256": "3ec5e19e346f54a20e539a176bdd00d9fa9bdab31ae8475c0e7068ea1a928dd2",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\tests\\test_mcp_json_export.py",
+      "target": "tests/test_mcp_json_export.py",
+      "source_sha256": "1ec2b84d32ad884df11b7d976e23841bfbb27739cd55d4bbb6ca74cc6cabb425",
+      "import_sha256": "1ec2b84d32ad884df11b7d976e23841bfbb27739cd55d4bbb6ca74cc6cabb425",
+      "published_sha256": "1ec2b84d32ad884df11b7d976e23841bfbb27739cd55d4bbb6ca74cc6cabb425",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\tests\\test_mcp_server.py",
+      "target": "tests/test_mcp_server.py",
+      "source_sha256": "5801fbed7e5f4020b2d5a8a3ec570244095691fb1618f6c5b4eb21ac4cf31547",
+      "import_sha256": "6852bbd558de5dc640f03d6023af45ddcbb3bc986c602389cc2496e5c4a8ce42",
+      "published_sha256": "6852bbd558de5dc640f03d6023af45ddcbb3bc986c602389cc2496e5c4a8ce42",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\tests\\test_native_toc.py",
+      "target": "tests/test_native_toc.py",
+      "source_sha256": "b184d82ec2a5aef37fd08e394c6c0cca1931b5be236e3424d80f21a3a17c428f",
+      "import_sha256": "0efc2cd8a3f8b53e1df32048c43086fa778c1737ec11400e3f7f77772f8ac19a",
+      "published_sha256": "0efc2cd8a3f8b53e1df32048c43086fa778c1737ec11400e3f7f77772f8ac19a",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\tests\\test_parsed_store.py",
+      "target": "tests/test_parsed_store.py",
+      "source_sha256": "4d1b1d7bd08cf7126d9c8d92ce7daffb37bf3b3a738aa0d1c1189abb71d2b235",
+      "import_sha256": "4d1b1d7bd08cf7126d9c8d92ce7daffb37bf3b3a738aa0d1c1189abb71d2b235",
+      "published_sha256": "4d1b1d7bd08cf7126d9c8d92ce7daffb37bf3b3a738aa0d1c1189abb71d2b235",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\tests\\test_parse_diagnostics.py",
+      "target": "tests/test_parse_diagnostics.py",
+      "source_sha256": "bdced2a30811a893e022694f8c323ecc6cf66e7f02a6ee1ab9eed3693cf545e7",
+      "import_sha256": "bdced2a30811a893e022694f8c323ecc6cf66e7f02a6ee1ab9eed3693cf545e7",
+      "published_sha256": "bdced2a30811a893e022694f8c323ecc6cf66e7f02a6ee1ab9eed3693cf545e7",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\tests\\test_pdf_table_ocr.py",
+      "target": "tests/test_pdf_table_ocr.py",
+      "source_sha256": "3100bb90599e4ec931090612dbe442b7e986508f210b4d55804704514168a494",
+      "import_sha256": "3100bb90599e4ec931090612dbe442b7e986508f210b4d55804704514168a494",
+      "published_sha256": "9b582bf01eb43e14176518a9d19455d76dc6e772f9a5ff7c837f24da5e51eb6e",
+      "changed_since_import": true
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\tests\\test_rag.py",
+      "target": "tests/test_rag.py",
+      "source_sha256": "f284490a3e6da8f630dbb7c6d0aa713567c62f77827305e88d8fc22ee1de46ad",
+      "import_sha256": "f284490a3e6da8f630dbb7c6d0aa713567c62f77827305e88d8fc22ee1de46ad",
+      "published_sha256": "f284490a3e6da8f630dbb7c6d0aa713567c62f77827305e88d8fc22ee1de46ad",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\tests\\test_structure_aware_text.py",
+      "target": "tests/test_structure_aware_text.py",
+      "source_sha256": "029275934f6bccdd514637ea69867a110a78e757b0d1d2111db7aa21db516cfd",
+      "import_sha256": "029275934f6bccdd514637ea69867a110a78e757b0d1d2111db7aa21db516cfd",
+      "published_sha256": "029275934f6bccdd514637ea69867a110a78e757b0d1d2111db7aa21db516cfd",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\tests\\test_table_identity.py",
+      "target": "tests/test_table_identity.py",
+      "source_sha256": "984b332ee8f71b08393eb9d371ba073fdeb930a49b4bb97faf09f000e71e75b0",
+      "import_sha256": "984b332ee8f71b08393eb9d371ba073fdeb930a49b4bb97faf09f000e71e75b0",
+      "published_sha256": "984b332ee8f71b08393eb9d371ba073fdeb930a49b4bb97faf09f000e71e75b0",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\tests\\test_toc_filter.py",
+      "target": "tests/test_toc_filter.py",
+      "source_sha256": "69ca14427fb460de020a077ecbcaf1fb5ce20ec86f0b46470dc004c8ece31ef9",
+      "import_sha256": "535812b4542376f10b1683aa5ed68d61aa574e652187be36dd988d60cc505464",
+      "published_sha256": "535812b4542376f10b1683aa5ed68d61aa574e652187be36dd988d60cc505464",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\tests\\test_visual_evidence.py",
+      "target": "tests/test_visual_evidence.py",
+      "source_sha256": "01da739b76375d2a9ac5002df4d2700c409edaa51bc002a479fba1e38e34167f",
+      "import_sha256": "01da739b76375d2a9ac5002df4d2700c409edaa51bc002a479fba1e38e34167f",
+      "published_sha256": "01da739b76375d2a9ac5002df4d2700c409edaa51bc002a479fba1e38e34167f",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\tests\\test_windows_table_recovery.py",
+      "target": "tests/test_windows_table_recovery.py",
+      "source_sha256": "e787486054fcce8d8ecfce573dac13c87fabab77b8a56af555faac31524388e7",
+      "import_sha256": "e787486054fcce8d8ecfce573dac13c87fabab77b8a56af555faac31524388e7",
+      "published_sha256": "e787486054fcce8d8ecfce573dac13c87fabab77b8a56af555faac31524388e7",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\pyproject.toml",
+      "target": "pyproject.toml",
+      "source_sha256": "79efae1ef0963107ee26f63feee9c5487757518b86a81137a4c20913afee4627",
+      "import_sha256": "e75c9c7406d7543143217a0cd271a64fdf33a318e77c9aea938a16b983dd5582",
+      "published_sha256": "3e4ca7fed3e74b8de7c45297e7c90cb8d0bb19cb26eb4de11d76230d9f9f74d4",
+      "changed_since_import": true
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\uv.lock",
+      "target": "uv.lock",
+      "source_sha256": "8625977cbbb37b93f1acafa443570adf59d00e453b03f4cac9cfa400f0c94681",
+      "import_sha256": "8625977cbbb37b93f1acafa443570adf59d00e453b03f4cac9cfa400f0c94681",
+      "published_sha256": "ff594e7dd849dd58e5429eae556ef506b82bd2d3ef11cec408556a23c585fd4d",
+      "changed_since_import": true
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\.python-version",
+      "target": ".python-version",
+      "source_sha256": "8dfda54ba2f66ab3a8ebab460f4338bbeea1fb1e0f85ce06fe3530aa3c64679b",
+      "import_sha256": "7b55f8e67b5623c4bef3fa691288da9437d79d3aba156de48d481db32ac7d16d",
+      "published_sha256": "7b55f8e67b5623c4bef3fa691288da9437d79d3aba156de48d481db32ac7d16d",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\skills\\c3-hwp-parsing\\SKILL.md",
+      "target": "skills/c3-hwp-parsing/SKILL.md",
+      "source_sha256": "f3a5da9e8eeff24a1d5d449ccbcf6dfa80aeb50c548aef082c6dc9483acc5bde",
+      "import_sha256": "7e68a3c0185248f5e0438bb179d401204be3fa165b69cd6ca284a64dd1d7651a",
+      "published_sha256": "7e68a3c0185248f5e0438bb179d401204be3fa165b69cd6ca284a64dd1d7651a",
+      "changed_since_import": false
+    },
+    {
+      "source": "D:\\dev_eval_team\\jh_dev\\govparse-mvp-windows\\govparse-mvp\\skills\\c3-hwp-parsing\\agents\\openai.yaml",
+      "target": "skills/c3-hwp-parsing/agents/openai.yaml",
+      "source_sha256": "0d40c63ceaffa342b17c11e7fcfe0cd07bda890128eec8388779ffee7913a738",
+      "import_sha256": "3f4889ee9fd0d692e93c13036236e54b772471a51d748d50b00c0259994cb33e",
+      "published_sha256": "3f4889ee9fd0d692e93c13036236e54b772471a51d748d50b00c0259994cb33e",
+      "changed_since_import": false
+    }
+  ],
+  "snapshot_check": "All selected original file hashes unchanged since first import; published hashes cover LF-normalized Git text.",
+  "changes": {
+    "src/govparse/config.py": "User-owned .govparse data root; domain-neutral input default; environment overrides retained.",
+    "src/govparse/cli.py": "General document help text.",
+    "src/govparse/mcp_server.py": "General module description; MCP tools and signatures unchanged.",
+    "pyproject.toml": "Version 0.1.1, generic description; removed unused developer source_dir.",
+    "uv.lock": "Regenerated offline for project version 0.1.1; dependency versions preserved.",
+    "tests/test_pdf_table_ocr.py": "Use temporary model directory for mocked OCR tests; preserve actual OCR model requirement.",
+    "src/govparse/census_rules.py": "Removed one trailing space; no executable change."
+  },
+  "added": [
+    "tests/test_config_portability.py",
+    "scripts/smoke_mcp.py",
+    "README.md",
+    "MCP_CLIENT_SETUP.md",
+    ".gitignore",
+    ".gitattributes",
+    "provenance/verification.json",
+    "provenance/mcp-smoke.json",
+    "provenance/package-manifest.json"
+  ],
+  "excluded": [
+    {
+      "scope": "data, corpora, mvp_fixtures, silverset, mvp_results, tmp, .runtime, .venv, caches, .env",
+      "reason": "Original documents, generated data, credentials or local runtimes are not source imports."
+    },
+    {
+      "scope": "docs/experiments and data experiment code",
+      "reason": "Classifier, similarity and labeling assets need their own repository selection; not blindly assigned to parser."
+    },
+    {
+      "scope": "three original scripts",
+      "reason": "Hardcoded corpus/workstation paths; original sources preserved, no claim they are portable tools."
+    },
+    {
+      "scope": "old setup scripts and historical handoff Markdown",
+      "reason": "First delivery uses explicit uv installation and newly authored current setup docs."
+    }
+  ]
+}

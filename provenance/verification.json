@@ -1,0 +1,70 @@
+{
+  "author": "chatgpt_gpt6",
+  "date": "2026-10-16",
+  "scope": "Latest local source import into generic document-parser-mcp; original Windows MCP/config unchanged.",
+  "original_connected_mcp": {
+    "audit": "workspace outputs/govparse-mcp-audit-20261016.json",
+    "source_tools": 18,
+    "exposed_tools": 18,
+    "names_match": true,
+    "editable_source": "D:/dev_eval_team/jh_dev/govparse-mvp-windows/govparse-mvp"
+  },
+  "isolated_environment": {
+    "project_version": "0.1.1",
+    "installation": "uv sync --frozen --group dev in new checkout",
+    "python": "3.12.10",
+    "mcp": "1.30.0",
+    "pymupdf": "1.28.2",
+    "rhwp-python": "0.8.1",
+    "opendataloader-pdf": "2.5.10",
+    "original_venv_modified": false
+  },
+  "failures_before_repair": [
+    {
+      "case": "default user-owned paths",
+      "result": "1 failed, 1 passed before config patch; default pointed into checkout instead of user data root."
+    },
+    {
+      "case": "first full suite in isolated environment",
+      "result": "143 passed, 7 failed, 1 skipped; mocked OCR tests depended on developer model directory. Repaired only test fixture to make model directory explicit, not production inference."
+    },
+    {
+      "case": "offline install",
+      "result": "Some locked development wheels not cached; online frozen install succeeded with locked versions."
+    }
+  ],
+  "final_suite": {
+    "command": ".venv/Scripts/python.exe -m pytest tests -q -rs -p no:cacheprovider",
+    "passed": 150,
+    "failed": 0,
+    "skipped": 1,
+    "skip_reason": "Non-Windows conversion guard test skipped on Windows"
+  },
+  "actual_mcp_smoke": {
+    "report": "mcp-smoke.json",
+    "tools": 18,
+    "calls_completed": 7,
+    "source": "generated one-page synthetic PDF",
+    "real_java_parser": true,
+    "checked_table_values": [
+      "Alpha",
+      "42"
+    ],
+    "rag_jsonl_created": true,
+    "source_hash_unchanged": true
+  },
+  "md_policy": {
+    "new_docs": [
+      "README.md",
+      "MCP_CLIENT_SETUP.md"
+    ],
+    "imported_skill": "Authored C3 method instructions; previous bounded MD provenance audit found no document-conversion logs. No original or converted document included."
+  },
+  "limits": [
+    "Windows-tested. Full Linux/macOS behavior unverified.",
+    "No real Hancom COM conversion or real HWP/HWPX native parser E2E in this import smoke. Native boundary, HWPX XML and conversion lineage covered by existing synthetic/mock unit tests.",
+    "Real OCR model inference not run. Models are external optional dependencies.",
+    "Government-corpus historical quality figures are not general-document quality guarantees."
+  ],
+  "source_preservation": "Original source files, runtime installation, corpus and MCP client registration preserved. New checkout has user-owned defaults; existing explicit environment overrides remain compatible."
+}

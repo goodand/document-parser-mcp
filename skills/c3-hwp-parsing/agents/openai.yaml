@@ -1,0 +1,3 @@
+interface:
+  display_name: "C3 HWP Parsing"
+  short_description: "Verify HWP source structure, visual context, and controls"
