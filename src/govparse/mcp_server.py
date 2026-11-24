@@ -699,6 +699,7 @@ def restore_hwp_body(doc_name: str) -> str:
     """
     from tempfile import TemporaryDirectory
 
+    from .table_roundtrip import audit_tables
     from .hwp_restore import restore_body
     from .hwp_source import extract_source
 
@@ -711,8 +712,9 @@ def restore_hwp_body(doc_name: str) -> str:
         with TemporaryDirectory(dir=sidecar) as temp:
             draft = Path(temp) / output.name
             restore_body(sidecar / "document.json", draft)
+            audit = audit_tables(src, sidecar / "document.json", draft)
             draft.replace(output)
-        return json.dumps({"hwpx_path": str(output), "source_sha256": manifest["source_sha256"],
+        return json.dumps({"hwpx_path": str(output), "table_diff": audit, "source_sha256": manifest["source_sha256"],
                            "scope": "body text and tables; images and original layout omitted"},
                           ensure_ascii=False)
     except (OSError, ValueError, TypeError, RuntimeError) as exc:

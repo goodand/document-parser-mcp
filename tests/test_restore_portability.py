@@ -19,3 +19,21 @@ def test_restore_hwpx_through_tool(tmp_path, monkeypatch):
     with ZipFile(result["hwpx_path"]) as restored:
         assert restored.testzip() is None
         assert b"<hp:tbl " in restored.read("Contents/section0.xml")
+    assert result["table_diff"]["source_to_json"]["different_records"] == 0
+    assert result["table_diff"]["json_to_hwpx"]["different_records"] == 0
+
+def test_missing_nested_cell_is_reported():
+    from govparse.table_roundtrip import compare, ir_records
+
+    inner = {"kind": "table", "rows": 1, "cols": 1, "cells": [
+        {"row": 0, "col": 0, "row_span": 1, "col_span": 1,
+         "blocks": [{"kind": "paragraph", "text": "금액"}]}
+    ]}
+    outer = {"kind": "table", "rows": 1, "cols": 2, "cells": [
+        {"row": 0, "col": 0, "row_span": 1, "col_span": 2, "blocks": [inner]}
+    ]}
+    expected = dict(ir_records([outer]))
+    inner["cells"].clear()
+    diff = compare(expected, dict(ir_records([outer])))
+    assert diff == {"different_records": 1,
+                    "example_paths": ["/table[0]/cell[0,0]/table[0]/cell[0,0]"]}
