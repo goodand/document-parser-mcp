@@ -55,3 +55,7 @@ HWP/HWPX 원본 위치와 PDF 페이지는 서로 다른 좌표계입니다. 변
 [반입 해시](provenance/import-manifest.json), [검증 결과](provenance/verification.json)를 확인하세요. 등록된 MCP 도구는 18개입니다. 원본 Windows 실행 환경을 수정하거나 기존 MCP 등록을 교체하지 않고, 이 checkout과 격리 환경에서 검증합니다.
 
 라이선스 표기는 기존 `Proprietary`를 유지합니다. 공개 오픈소스 라이선스를 새로 부여하지 않았습니다.
+
+### HWP 본문 복원
+
+MCP 도구 `restore_hwp_body(doc_name)`는 등록된 HWP/HWPX의 본문 문단과 중첩 표를 편집 가능한 HWPX로 저장하고 결과 경로를 반환합니다. 그림, 원본 글꼴과 쪽 배치는 복원 범위에서 제외합니다.

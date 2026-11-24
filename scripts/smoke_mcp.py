@@ -40,7 +40,7 @@ async def run(java_home=None):
             async with ClientSession(reader,writer) as session:
                 init=await session.initialize()
                 names=sorted(t.name for t in (await session.list_tools()).tools)
-                assert len(names)==18,names
+                assert 'restore_hwp_body' in names and len(names)>=19,names
 
                 async def call(name,arguments):
                     result=await session.call_tool(name,arguments,read_timeout_seconds=__import__('datetime').timedelta(seconds=180))

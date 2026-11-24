@@ -223,6 +223,7 @@ def test_all_tools_registered():
         "get_tables",
         "extract_table_images",
         "export_rag_chunks",
+        "restore_hwp_body",
         "parse_hwp_source",
         "get_hwp_element",
         "search_hwp_source",

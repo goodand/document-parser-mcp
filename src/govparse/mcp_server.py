@@ -692,6 +692,34 @@ def parse_hwp_source(doc_name: str) -> str:
 
 
 @mcp.tool()
+def restore_hwp_body(doc_name: str) -> str:
+    """등록된 HWP/HWPX의 본문 문단과 중첩 표를 편집 가능한 HWPX로 복원한다.
+
+    그림, 원본 서식과 쪽 배치는 복원 범위에서 제외한다.
+    """
+    from tempfile import TemporaryDirectory
+
+    from .hwp_restore import restore_body
+    from .hwp_source import extract_source
+
+    if _safe_doc_name(doc_name) is None:
+        return json.dumps({"error": "문서 이름에 경로가 들어갈 수 없습니다."}, ensure_ascii=False)
+    src, sidecar = _hwp_source_paths(doc_name)
+    try:
+        manifest = extract_source(src, sidecar)
+        output = sidecar / "restored-body.hwpx"
+        with TemporaryDirectory(dir=sidecar) as temp:
+            draft = Path(temp) / output.name
+            restore_body(sidecar / "document.json", draft)
+            draft.replace(output)
+        return json.dumps({"hwpx_path": str(output), "source_sha256": manifest["source_sha256"],
+                           "scope": "body text and tables; images and original layout omitted"},
+                          ensure_ascii=False)
+    except (OSError, ValueError, TypeError, RuntimeError) as exc:
+        return json.dumps({"error": str(exc)}, ensure_ascii=False)
+
+
+@mcp.tool()
 def get_hwp_element(doc_name: str, body_index: int, row: int = -1, col: int = -1) -> str:
     """원본 HWP/HWPX의 한 body 요소를 JSON으로 반환한다.
 
