@@ -19,6 +19,7 @@ uv run govparse-mcp
 |---|---|
 | HWP/HWPX 원본 문단·표·셀 구조 | `rhwp-python` |
 | HWP 기본 C3 조합 | 패키지에 포함된 native decoder + pyhwp + rhwp + 변환 계보가 검증된 PDF |
+| 편집 가능한 HWPX 본문 복원 | Windows/macOS, `restore_hwp_body` |
 | PDF 구조 파싱 | opendataloader-pdf, Java 11 이상 |
 | PDF 표 복구·페이지 이미지 | PyMuPDF |
 | HWP/HWPX → PDF 변환 | Windows + 한컴오피스 + COM |
@@ -52,7 +53,7 @@ HWP/HWPX 원본 위치와 PDF 페이지는 서로 다른 좌표계입니다. 변
 
 최신 로컬 패키지의 Python 소스 24개와 기존 테스트 17개를 선별했고, 별도의 이식성 테스트를 추가했습니다. 원문 PDF/HWP/HWPX·업무 DB·변환 문서·대량 실험 결과는 반입하지 않았습니다. Skill은 개발 방법 문서이며 기존 Markdown 출처 조사에서 변환 로그가 발견되지 않은 항목입니다. 이 README와 MCP 설정 문서는 새로 작성한 사용 설명입니다.
 
-[반입 해시](provenance/import-manifest.json), [검증 결과](provenance/verification.json)를 확인하세요. 등록된 MCP 도구는 18개입니다. 원본 Windows 실행 환경을 수정하거나 기존 MCP 등록을 교체하지 않고, 이 checkout과 격리 환경에서 검증합니다.
+[반입 해시](provenance/import-manifest.json), [검증 결과](provenance/verification.json)를 확인하세요. 등록된 MCP 도구는 19개입니다. 원본 Windows 실행 환경을 수정하거나 기존 MCP 등록을 교체하지 않고, 이 checkout과 격리 환경에서 검증합니다.
 
 라이선스 표기는 기존 `Proprietary`를 유지합니다. 공개 오픈소스 라이선스를 새로 부여하지 않았습니다.
 

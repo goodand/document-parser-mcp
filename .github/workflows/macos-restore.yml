@@ -1,0 +1,17 @@
+name: macOS HWPX restore
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  restore:
+    strategy:
+      matrix:
+        os: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen --group dev
+      - run: uv run --frozen pytest tests/test_restore_portability.py -q
