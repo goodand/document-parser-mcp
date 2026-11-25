@@ -123,6 +123,7 @@ class Desktop : Form {
     readonly ListView assets = new ListView { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, HideSelection = false, MultiSelect = false, BorderStyle = BorderStyle.None };
     readonly AxButton openExternal = new AxButton("브라우저에서 열기", AxKind.Secondary), openFolder = new AxButton("폴더 열기", AxKind.Secondary);
     readonly AxButton toHtml = new AxButton("HTML로 변환", AxKind.Secondary), toHwpx = new AxButton("HWPX로 변환", AxKind.Secondary);
+    readonly AxButton openZip = new AxButton("압축 파일 보기", AxKind.Secondary);
     readonly OcrBox ocr;
     string source, resultPath, resultKind, resultJson, lastDir;
     // processing status strip: what is being read/rendered/exported right now, with elapsed time
@@ -142,7 +143,7 @@ class Desktop : Form {
         orig = new PageView(worker, "HWP 또는 HWPX 파일을 여기에 놓으세요", "파일 열기");
         resultPages = new PageView(worker, "아직 결과가 없습니다. 내보내기를 하거나 ‘결과 불러오기’로 기존 결과를 여세요.", null);
         figures = new FigurePanel(root, worker, i => orig.Show(i), () => orig.Pic.Invalidate());
-        ocr = new OcrBox(worker, () => assets.SelectedItems.Count > 0 ? (string)((Dictionary<string, object>)assets.SelectedItems[0].Tag)["file"] : null) { Dock = DockStyle.Bottom };
+        ocr = new OcrBox(worker, () => SelectedAssetFile()) { Dock = DockStyle.Bottom };
         orig.Overlay = (pic, g) => figures.PaintOverlay(pic, g, orig.Page);
         figures.Reveal = f => orig.Reveal(f);
         orig.Action.Click += async (s, e) => { if (source == null) Pick(); else await orig.Retry(); };
@@ -194,10 +195,12 @@ class Desktop : Form {
         resTitle.Font = Theme.Strong; resTitle.Height = Theme.Px(34); resState.Height = Theme.Px(48); resNotes.Height = Theme.Px(120); resNotes.Font = Theme.Small;
         assets.Columns.Add("자산", Theme.Px(110)); assets.Columns.Add("출처", Theme.Px(80)); assets.Columns.Add("위치 / 설명", Theme.Px(280)); assets.Columns.Add("원본 파일", Theme.Px(200));
         assets.SelectedIndexChanged += (s, e) => SelectAsset();
-        PictureClipboard.Attach(assets, () => assets.SelectedItems.Count > 0 ? (string)((Dictionary<string, object>)assets.SelectedItems[0].Tag)["file"] : null,
+        PictureClipboard.Attach(assets, () => SelectedAssetFile(),
             (m, ok) => Say(m, ok ? Theme.Ok : Theme.Warn));
         var actions = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, BackColor = Theme.Surface, Padding = new Padding(6) };
-        actions.Controls.Add(openExternal); actions.Controls.Add(openFolder); actions.Controls.Add(toHtml); actions.Controls.Add(toHwpx);
+        actions.Controls.Add(openExternal); actions.Controls.Add(openFolder); actions.Controls.Add(openZip); actions.Controls.Add(toHtml); actions.Controls.Add(toHwpx);
+        openZip.Visible = false;
+        openZip.Click += async (s, e) => { var z = ZipOf(resultPath); if (z != null) await ShowInExplorer(z); };
         openExternal.Click += (s, e) => OpenExternal(); openFolder.Click += async (s, e) => { if (resultPath != null) await ShowInExplorer((Directory.Exists(resultPath) ? Path.Combine(resultPath, resultKind == "html" ? "document.html" : "document.json") : resultPath)); };
         toHtml.Click += async (s, e) => await Convert("html"); toHwpx.Click += async (s, e) => await Convert("hwpx");
         side.Controls.Add(assets); side.Controls.Add(Rule(DockStyle.Top)); side.Controls.Add(resNotes); side.Controls.Add(resState); side.Controls.Add(resTitle); side.Controls.Add(ocr); side.Controls.Add(actions);
@@ -227,7 +230,7 @@ class Desktop : Form {
         FormClosing += (s, e) => { figures.Shutdown(); worker.Shutdown(); };   // only processes this app started
         resultSplit.Resize += (s, e) => FitResultPanel();
         assetPic.Resize += (s, e) => FitAssetPic();
-        Shown += (s, e) => { Refresh2(); Say("Ctrl+O 또는 끌어다 놓기로 HWP/HWPX 문서를 여세요.", Theme.Muted); };
+        Shown += (s, e) => { Task.Run((Action)ServeDesktop); Refresh2(); Say("Ctrl+O 또는 끌어다 놓기로 HWP/HWPX 문서를 여세요.", Theme.Muted); };
     }
 
     PageView Cur { get { return showingResult ? resultPages : orig; } }
@@ -323,6 +326,48 @@ class Desktop : Form {
             } catch { }
         });
     }
+    [DllImport("user32.dll")] static extern bool IsWindowEnabled(IntPtr hWnd);
+    void ServeDesktop() {
+        string pipeName = "GovParseDesktop-" + Process.GetCurrentProcess().Id;
+        var sid = System.Security.Principal.WindowsIdentity.GetCurrent().User;
+        var acl = new System.IO.Pipes.PipeSecurity();
+        acl.AddAccessRule(new System.IO.Pipes.PipeAccessRule(sid, System.IO.Pipes.PipeAccessRights.FullControl,
+            System.Security.AccessControl.AccessControlType.Allow));
+        while (!IsDisposed) {
+            try {
+                using (var pipe = new System.IO.Pipes.NamedPipeServerStream(pipeName, System.IO.Pipes.PipeDirection.InOut,
+                    1, System.IO.Pipes.PipeTransmissionMode.Byte, System.IO.Pipes.PipeOptions.None, 4096, 4096, acl)) {
+                    pipe.WaitForConnection();
+                    using (var input = new StreamReader(pipe, Encoding.UTF8, false, 1024, true))
+                    using (var output = new StreamWriter(pipe, new UTF8Encoding(false))) {
+                        string request = input.ReadLine();
+                        if (request == null) continue;
+                        output.WriteLine((string)Invoke(new Func<string>(() => DesktopRequest(request))));
+                    }
+                }
+            } catch (IOException) { } catch (InvalidOperationException) { return; }
+        }
+    }
+    string DesktopRequest(string request) {
+        var fields = request.Split('|');
+        string statusCode = "open";
+        if (fields.Length == 3 && fields[0] == "show") {
+            if (!IsWindowEnabled(Handle)) statusCode = "dialog_open";   // a modal dialog disables the window natively; Control.Enabled stays true
+            else if (figures.DocumentHash == null || origSplit.Panel2Collapsed) statusCode = "figure_panel_unavailable";
+            else if (figures.DocumentHash != fields[1]) statusCode = "document_mismatch";
+            else {
+                statusCode = figures.SelectVerified(fields[2]);
+                if (statusCode == "selected") SwitchTab(false);
+            }
+        } else if (request == "original" || request == "result") {
+            if (!IsWindowEnabled(Handle)) statusCode = "dialog_open";   // a modal dialog disables the window natively; Control.Enabled stays true
+            else if (request == "result" && !tabResult.Enabled) statusCode = "view_unavailable";
+            else { SwitchTab(request == "result"); statusCode = "shown"; }
+        } else if (request != "state") statusCode = "invalid_request";
+        return json.Serialize(new { status = statusCode, title = Text, view = showingResult ? "result" : "original",
+            source_sha256 = figures.DocumentHash, item_id = !showingResult && !origSplit.Panel2Collapsed ? figures.SelectedId : null,
+            page = !showingResult && orig.Pages > 0 ? (int?)(orig.Page + 1) : null });
+    }
     void ToggleFigures() {
         origSplit.Panel2Collapsed = !origSplit.Panel2Collapsed;
         if (!origSplit.Panel2Collapsed) { origSplit.SplitterDistance = Math.Max(Theme.Px(220), origSplit.Width - Theme.Px(600)); if (source != null && figures.Source != source) { var _ = figures.Open(source); } }
@@ -385,8 +430,9 @@ class Desktop : Form {
         try {
             var r = await RunStaged(mode, mode + " " + Worker.Quote(input), target, name + " → " + formatMenu.LabelOf(mode));
             int count = Directory.Exists(r.Item1) ? Directory.GetFiles(r.Item1, "*", SearchOption.AllDirectories).Length : 1;
+            string zipNote = mode == "json" ? await MakeZip(r.Item1, name) : "";
             string renamed = SamePath(r.Item1, target) ? "" : " (같은 이름이 있어 새 이름으로 저장)";
-            if (job == jobId) { await ShowResult(r.Item1, r.Item2, name); tabResult.Enabled = true; Say(String.Format("저장 완료 · {0} · 파일 {1}개 · {2}{3} — ‘결과 보기’에서 확인", name, count, r.Item1, renamed), Theme.Ok); }
+            if (job == jobId) { await ShowResult(r.Item1, r.Item2, name); tabResult.Enabled = true; Say(String.Format("저장 완료 · {0} · 파일 {1}개 · {2}{3}{4} — ‘결과 보기’에서 확인", name, count, r.Item1, renamed, zipNote), zipNote.StartsWith(" · 압축 실패") ? Theme.Warn : Theme.Ok); }
             else Say(String.Format("이전 문서 {0}의 내보내기 완료 · 파일 {1}개 · {2}{3} (현재 문서 화면은 바꾸지 않았습니다)", name, count, r.Item1, renamed), Theme.Ok);
         } catch (OperationCanceledException) { Say("내보내기를 취소했습니다. 원본과 기존 결과는 그대로입니다.", Theme.Muted); }
         catch (Exception ex) { Say("내보내기 실패 · " + name + " · " + ex.Message, Theme.Warn); }
@@ -425,7 +471,9 @@ class Desktop : Form {
         if (rep != null) {
             if (rep.ContainsKey("notes")) notes.AddRange(((ArrayList)rep["notes"]).Cast<object>().Select(o => "· " + o));
             if (rep.ContainsKey("restore")) { var r = (Dictionary<string, object>)rep["restore"]; notes.Add(String.Format("· 그림 {0}개 복원 · 원문 캡션 {1}개 · 사용자 연결 {2}건은 .links.json", r["pictures"], r["source_captions"], r["user_links_sidecar"])); }
-            if (rep.ContainsKey("bundle")) { var b = (Dictionary<string, object>)((Dictionary<string, object>)rep["bundle"])["counts"]; notes.Add(String.Format("· 내장 그림 {0}개 · 표 캡처 {1}", b["embedded_picture"], b["rendered_table_capture"] == null ? "미확인" : b["rendered_table_capture"] + "장")); }
+            if (rep.ContainsKey("bundle")) { var b = (Dictionary<string, object>)((Dictionary<string, object>)rep["bundle"])["counts"]; bool perTable = b.ContainsKey("table_image") && System.Convert.ToInt32(b["table_image"]) > 0;
+                notes.Add(perTable ? String.Format("· 내장 그림 {0}개 · 표 이미지 {1}장 (표마다 따로)", b["embedded_picture"], b["table_image"])
+                                   : String.Format("· 내장 그림 {0}개 · 표 캡처 {1}", b["embedded_picture"], b["rendered_table_capture"] == null ? "미확인" : b["rendered_table_capture"] + "장")); }
             if (rep.ContainsKey("ir_builder")) notes.Add("· 구조 읽기: " + rep["ir_builder"]);
         } else notes.Add("· 기존 결과를 불러왔습니다 (이번 실행에서 만든 결과가 아님)");
         resultPath = path; resultKind = kind; resultJson = kind == "json" ? file : null;
@@ -436,18 +484,30 @@ class Desktop : Form {
         assets.Visible = ocr.Visible = kind == "json"; assets.Items.Clear(); assetPic.Image = null;
         openExternal.SetText(kind == "html" ? "브라우저에서 열기" : kind == "pages" ? "한글에서 열기" : "JSON 열기");
         toHtml.Visible = toHwpx.Visible = kind == "json"; toHtml.Enabled = toHwpx.Enabled = kind == "json";
+        openZip.Visible = ZipOf(path) != null;
         if (kind == "html") { SetResState(saved, "미리보기 여는 중…", false); web.Navigate(new Uri(file)); web.DocumentCompleted += (s, e) => { if (resultKind == "html") SetResState(true, "미리보기 성공 · 저장된 로컬 HTML을 표시", true); }; }
         else if (kind == "pages") { SetResState(saved, "미리보기 준비 중 · 저장된 결과 파일을 다시 그리는 중", false); var _ = resultPages.Load(file); }
         else {
             SetResState(saved, "자산 목록 읽는 중…", false);
             string o = await Task.Run(() => worker.Run("index " + Worker.Quote(file), 600000));
             var idx = json.Deserialize<Dictionary<string, object>>(o);
+            string src = idx.ContainsKey("source_name") && idx["source_name"] != null ? (string)idx["source_name"] : "";
             foreach (Dictionary<string, object> a in (ArrayList)idx["assets"]) {
-                bool embedded = (string)a["origin"] == "embedded_picture";
-                string src = idx.ContainsKey("source_name") && idx["source_name"] != null ? (string)idx["source_name"] : "";
+                string origin = (string)a["origin"];
                 string txt = a.ContainsKey("text") && a["text"] != null ? (string)a["text"] : "";
-                string info = (embedded ? (txt.Length > 0 ? txt : "문서에 들어 있던 그림") : "미리보기 " + a["page"] + "쪽의 표 영역 (어느 표인지는 확인되지 않음)");
-                assets.Items.Add(new ListViewItem(new[] { Path.GetFileName((string)a["path"]), embedded ? "내장 그림" : "표 캡처", info, src }) { Tag = a });
+                string kindText, info;
+                if (origin == "embedded_picture") { kindText = "내장 그림"; info = txt.Length > 0 ? txt : "문서에 들어 있던 그림"; }
+                else if (origin == "table_image") { kindText = "표 이미지"; info = txt; }   // one table, matched to the source by the engine
+                else { kindText = "표 캡처"; info = "미리보기 " + a["page"] + "쪽의 표 영역 (어느 표인지는 확인되지 않음)"; }
+                assets.Items.Add(new ListViewItem(new[] { Path.GetFileName((string)a["path"]), kindText, info, src }) { Tag = a });
+            }
+            // tables without an image stay visible with the reason, instead of being filled with a similar-looking capture
+            var ti = idx.ContainsKey("table_images") ? idx["table_images"] as Dictionary<string, object> : null;
+            if (ti != null) {
+                resNotes.Text += String.Format("\r\n· 표 {0}개 중 {1}개 이미지 생성 · PNG {2}장{3}", ti["tables"], ti["rendered"], ti["png"],
+                    System.Convert.ToInt32(ti["not_rendered"]) > 0 ? " · 미생성 " + ti["not_rendered"] + "개는 목록 끝에 사유 표시" : "");
+                foreach (Dictionary<string, object> m in (ArrayList)ti["missing"])
+                    assets.Items.Add(new ListViewItem(new[] { "(이미지 없음)", "표 이미지 미생성", m["label"] + " · " + m["reason_text"], src }) { Tag = m, ForeColor = Theme.Warn });
             }
             int missing = ((ArrayList)idx["missing"]).Count;
             var integ = idx["integrity"] as Dictionary<string, object>;
@@ -462,9 +522,16 @@ class Desktop : Form {
         }
         Refresh2();
     }
+    // picture file of the selected result row; null for a table that has no image
+    string SelectedAssetFile() {
+        if (assets.SelectedItems.Count == 0) return null;
+        var t = (Dictionary<string, object>)assets.SelectedItems[0].Tag;
+        return t.ContainsKey("file") ? (string)t["file"] : null;
+    }
     void SelectAsset() {
         if (assets.SelectedItems.Count == 0) return;
         var a = (Dictionary<string, object>)assets.SelectedItems[0].Tag;
+        if (!a.ContainsKey("file")) { var old0 = assetPic.Image; assetPic.Image = null; if (old0 != null) old0.Dispose(); ocr.Show(null); return; }   // table without an image
         try { using (var f = Image.FromFile((string)a["file"])) { var old = assetPic.Image; var bmp = new Bitmap(f); assetPic.Image = bmp; FitAssetPic(); if (old != null) old.Dispose(); } } catch { assetPic.Image = null; }
         string st = (string)a["ocr_status"];
         ocr.Show(st == "ok" || st == "empty" ? ((ArrayList)a["ocr_texts"]).Cast<string>().ToArray() : null);
@@ -473,6 +540,26 @@ class Desktop : Form {
     [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr hWnd, int cmd);
     // Explorer hands "/select" to the running shell process, which may open behind this window.
     // We are the foreground app, so we may bring that new Explorer window to the front ourselves.
+    // <folder>.zip made next to a JSON result folder for sending it on; null when there is none.
+    static string ZipOf(string resultFolder) {
+        if (String.IsNullOrEmpty(resultFolder) || !Directory.Exists(resultFolder)) return null;
+        string z = resultFolder.TrimEnd('\\', '/') + ".zip";
+        return File.Exists(z) ? z : null;
+    }
+    // Packs a finished JSON result folder into one .zip beside it. The folder stays (the app reads it);
+    // a failed or cancelled zip never fails the export. Returns a note for the status line.
+    async Task<string> MakeZip(string folder, string name) {
+        string target = folder.TrimEnd('\\', '/') + ".zip";
+        exportStart = DateTime.Now; exportStep = name + " → 압축 파일"; exportStage = ""; stageDone = -1; stageTotal = 0; UpdateStrip();
+        SetExporting(true); Say("압축 파일 만드는 중 · " + Path.GetFileName(target) + "  (Esc로 취소해도 결과 폴더는 그대로)", Theme.Muted);
+        try {
+            string o = await Task.Run(() => worker.Run("zip " + Worker.Quote(folder) + " " + Worker.Quote(target), 3600000, p => exportProc = p, OnProgress));
+            var z = json.Deserialize<Dictionary<string, object>>(o);
+            return String.Format(" · 압축 파일 {0} ({1:0.0}MB)", Path.GetFileName((string)z["zip"]), System.Convert.ToDouble(z["bytes"]) / 1048576.0);
+        } catch (OperationCanceledException) { return " · 압축은 취소함 (결과 폴더는 저장됨)"; }
+        catch (Exception ex) { return " · 압축 실패: " + ex.Message + " (결과 폴더는 저장됨)"; }
+        finally { exportProc = null; exportStart = null; UpdateStrip(); SetExporting(false); }
+    }
     async Task ShowInExplorer(string file) {
         Launch("explorer.exe", "/select,\"" + file + "\"");
         string folder = new Uri(Path.GetDirectoryName(file) + Path.DirectorySeparatorChar).AbsoluteUri.TrimEnd('/');

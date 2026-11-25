@@ -1,6 +1,6 @@
 # GovParse Desktop
 
-GovParse Desktop is a document review and export application. The PySide6 interface is intended to be cross-platform; this preview snapshot has been exercised on Windows only. macOS and Linux runs have not been verified. Windows-specific WinForms files and the installer source remain available for the existing Windows build.
+Windows x64 ships the C# WinForms application. The PySide6 interface in `gpqt/` runs from source on Windows for development and testing. It is intended for a separate macOS application bundle, with Linux planned later. Native macOS packaging and GUI verification are pending.
 
 The desktop worker parses documents with rhwp. The JSON + PNG export uses GovParse for verified table images. HWPX export uses the app's IR and the vendored restorer in `gpdesk/vendor/hwp_restore.py` (engine commit `ea53268`). The separate MCP restorer has its own round-trip measurements.
 

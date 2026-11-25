@@ -290,3 +290,42 @@ def test_windows_ocr_keeps_gui_preprocessing(tmp_path, monkeypatch):
     dw.ocr(png)
     assert len(calls) == 1 and calls[0][0] != png
     assert pymupdf.Pixmap(str(calls[0][0])).width == 300 + 2 * dw.OCR_PAD
+
+
+def _result_folder(root):
+    folder = root / "doc-json"
+    (folder / "assets").mkdir(parents=True)
+    (folder / "document.json").write_text('{"a": 1}', "utf-8")
+    (folder / "report.json").write_text('{"files": []}', "utf-8")
+    (folder / "assets" / "bin1.png").write_bytes(b"\x89PNG fake")
+    return folder
+
+
+def test_zip_result_keeps_the_folder_layout(tmp_path):
+    """The zip opens to one folder with the same relative paths, so JSON image links still resolve."""
+    import zipfile
+
+    folder = _result_folder(tmp_path)
+    events = []
+    rep = dw.zip_result(folder, tmp_path / "doc-json.zip", progress=events.append)
+    z = Path(rep["zip"])
+    assert z == tmp_path / "doc-json.zip" and rep["files"] == 3 and rep["bytes"] == z.stat().st_size
+    with zipfile.ZipFile(z) as f:
+        assert sorted(f.namelist()) == ["doc-json/assets/bin1.png", "doc-json/document.json", "doc-json/report.json"]
+        assert f.read("doc-json/assets/bin1.png") == b"\x89PNG fake" and f.testzip() is None
+    assert events and events[-1]["stage"] == "압축" and events[-1]["done"] == 3
+    assert not list(tmp_path.glob(".govparse-zip-*"))  # no temporary file left
+
+
+def test_zip_result_never_overwrites(tmp_path):
+    folder = _result_folder(tmp_path)
+    (tmp_path / "doc-json.zip").write_bytes(b"someone else's file")
+    rep = dw.zip_result(folder, tmp_path / "doc-json.zip")
+    assert (tmp_path / "doc-json.zip").read_bytes() == b"someone else's file"
+    assert Path(rep["zip"]) != tmp_path / "doc-json.zip" and Path(rep["zip"]).is_file()
+
+
+def test_zip_mode_through_dispatch(tmp_path):
+    folder = _result_folder(tmp_path)
+    rep = dw._dispatch(["zip", str(folder), str(tmp_path / "out.zip")])
+    assert Path(rep["zip"]).is_file()

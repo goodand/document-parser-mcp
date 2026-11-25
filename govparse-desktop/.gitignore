@@ -7,7 +7,9 @@ build/
 dist/
 evidence/
 config.json
+/samples/tips-json-v2-html/
 !samples/synthetic-35tables.hwpx
 !samples/synthetic-merged.hwpx
 !samples/synthetic-figures.hwpx
+!samples/synthetic-figures.hwp
 !gpdesk/vendor/blank_table.hwpx

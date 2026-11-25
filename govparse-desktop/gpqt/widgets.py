@@ -6,6 +6,7 @@ import os
 import threading
 from pathlib import Path
 
+from shiboken6 import isValid
 from PySide6.QtCore import QObject, QRectF, QSize, Qt, QUrl, Signal, Slot
 from PySide6.QtGui import QColor, QGuiApplication, QImage, QKeySequence, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (QHBoxLayout, QLabel, QPlainTextEdit, QPushButton, QScrollArea, QTreeWidget,
@@ -29,6 +30,13 @@ class Poster(QObject):
         super().__init__(parent)
         self.post.connect(self._dispatch, Qt.QueuedConnection)
 
+    def submit(self, callback):
+        try:
+            self.post.emit(callback)
+        except RuntimeError:
+            if isValid(self):
+                raise
+
     @Slot(object)
     def _dispatch(self, callback) -> None:
         callback()
@@ -40,10 +48,10 @@ def run_bg(poster: Poster, work, done=None, fail=None) -> threading.Thread:
             r = work()
         except Exception as e:  # noqa: BLE001 - reported on screen
             if fail:
-                poster.post.emit(lambda e=e: fail(e))
+                poster.submit(lambda e=e: fail(e))
             return
         if done:
-            poster.post.emit(lambda r=r: done(r))
+            poster.submit(lambda r=r: done(r))
     t = threading.Thread(target=go, daemon=True)
     t.start()
     return t

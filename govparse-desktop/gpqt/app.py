@@ -700,7 +700,7 @@ class MainWindow(QMainWindow):
                     self.stage_start = time.time()
                 self.export_event = ev
                 self.refresh()
-            self.poster.post.emit(apply)
+            self.poster.submit(apply)
 
         def work():
             rep = self.worker.run(worker_mode, *args, str(staging), *extra, on_progress=progress, cancel=cancel)

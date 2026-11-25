@@ -24,7 +24,10 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 APP = Path(__file__).resolve().parents[2]           # govparse-desktop/
 sys.path.insert(0, str(APP))                          # gpdesk (worker) and gpqt (GUI)
-sys.path.insert(0, str(APP.parent / "src"))
+for _engine in (APP.parent / "src", APP.parent / "work" / "document-parser-mcp" / "src"):   # repository / this PC
+    if (_engine / "govparse").is_dir():
+        sys.path.insert(0, str(_engine))
+        break
 SAMPLES = APP / "samples"
 
 

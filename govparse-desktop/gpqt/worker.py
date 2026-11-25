@@ -26,9 +26,11 @@ class WorkerError(RuntimeError):
 def _env() -> dict:
     env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
     paths = [str(APP)]
-    engine = APP.parent / "src"
-    if (engine / "govparse").is_dir():
-        paths.append(str(engine))
+    # engine source: repository layout (<repo>/src next to govparse-desktop) or this PC's work copy
+    for engine in (APP.parent / "src", APP.parent / "work" / "document-parser-mcp" / "src"):
+        if (engine / "govparse").is_dir():
+            paths.append(str(engine))
+            break
     if env.get("PYTHONPATH"):
         paths.append(env["PYTHONPATH"])
     env["PYTHONPATH"] = os.pathsep.join(paths)
