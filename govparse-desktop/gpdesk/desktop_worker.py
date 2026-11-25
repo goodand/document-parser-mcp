@@ -226,6 +226,96 @@ def _table_pages(src: "Source", progress):
     progress({"stage": "표 찾기", "done": n, "total": n})
 
 
+TABLE_REASONS = {
+    "native_table_path_not_found": "원본에서 같은 표를 찾지 못함",
+    "table_structure_or_text_not_exact": "원본 표와 구조·글자가 정확히 일치하지 않음",
+    "rendered_pages_are_blank": "그려진 쪽이 비어 있음",
+    "table_id_not_present_in_ir": "구조에 없는 표",
+}
+TABLE_REASON_PREFIX = {"isolation_failed": "표 분리 실패", "rhwp_render_failed": "표 그리기 실패",
+                       "crop_failed": "여백 자르기 실패", "source_conversion_failed": "원본 변환 실패"}
+
+
+def table_reason(reason: str | None) -> str:
+    if not reason:
+        return ""
+    head = reason.split(":", 1)[0]
+    return TABLE_REASONS.get(reason) or TABLE_REASON_PREFIX.get(head) or reason
+
+
+def table_label(table_id: str) -> str:
+    """'s0/b3/t1/c1_0/t0' -> '본문 2번째 표 › 2행 1열 칸 안 1번째 표' (the ID itself stays the key)."""
+    parts = table_id.split("/")
+    out = []
+    for i, p in enumerate(parts):
+        m = re.fullmatch(r"t(\d+)", p)
+        if m and i == 2:
+            out.append(f"본문 {int(m.group(1)) + 1}번째 표")
+        elif m:
+            cell = re.fullmatch(r"c(\d+)_(\d+)", parts[i - 1])
+            where = f"{int(cell.group(1)) + 1}행 {int(cell.group(2)) + 1}열 칸 안 " if cell else ""
+            out.append(f"{where}{int(m.group(1)) + 1}번째 표")
+    return " › ".join(out) or table_id
+
+
+def _table_renderer():
+    """The engine's per-table renderer, or None for an engine without it."""
+    try:
+        from govparse.table_images import extract_table_images_by_id, iter_table_nodes
+    except Exception:  # noqa: BLE001
+        return None
+    return extract_table_images_by_id, iter_table_nodes
+
+
+def table_images(path: Path, ir: dict, out_dir: Path, progress) -> dict | None:
+    """One PNG per table (several for a table split over pages), matched against the source XML by the engine.
+
+    Annotates every IR table block with table_id and table_image {status, paths (result-relative), reason}.
+    Returns the summary, or None when the engine has no per-table renderer.
+    """
+    import threading
+
+    renderer = _table_renderer()
+    if renderer is None:
+        return None
+    extract, iter_nodes = renderer
+    nodes = list(iter_nodes(ir))
+    total = len(nodes)
+    digest = _sha(path)
+    tags = {hashlib.sha256(f"{digest}:{sid}".encode()).hexdigest()[:12] for sid, _ in nodes}
+    stop = threading.Event()
+
+    def watch():  # the engine call has no callback: count tables whose PNGs have appeared
+        while not stop.wait(1.0):
+            seen = {p.name[6:18] for p in out_dir.glob("table-*.png")} if out_dir.is_dir() else set()
+            progress({"stage": "표 이미지", "done": len(seen & tags), "total": total, "detail": "표마다 따로 그리는 중"})
+
+    progress({"stage": "표 이미지", "done": 0, "total": total})
+    t = threading.Thread(target=watch, daemon=True)
+    t.start()
+    try:
+        manifest = extract(path, ir, out_dir) if total else {"tables": {}}
+    finally:
+        stop.set()
+        t.join()
+    progress({"stage": "표 이미지", "done": total, "total": total})
+    rel = out_dir.relative_to(out_dir.parents[1]).as_posix()  # assets/tables
+    rows = manifest.get("tables", {})
+    not_rendered = []
+    for sid, node in nodes:
+        rec = rows.get(sid) or {"status": "unmatched", "paths": [], "reason": "table_id_not_present_in_ir"}
+        ok = rec.get("status") == "rendered"
+        node["table_id"] = sid
+        node["table_image"] = {"status": rec.get("status"), "paths": [f"{rel}/{p}" for p in rec.get("paths") or []] if ok else [],
+                               "reason": None if ok else rec.get("reason")}
+        if not ok:
+            not_rendered.append({"table_id": sid, "label": table_label(sid), "status": rec.get("status"),
+                                 "reason": rec.get("reason"), "reason_text": table_reason(rec.get("reason"))})
+    return {"tables": total, "rendered": total - len(not_rendered), "not_rendered": len(not_rendered),
+            "png": sum(len(n["table_image"]["paths"]) for _, n in nodes), "manifest": f"{rel}/manifest.json",
+            "missing": not_rendered}
+
+
 def run(mode: str, path: Path, out: Path, ocr: bool = False, progress=lambda e: None) -> dict:
     progress({"stage": "구조 읽기"})
     src = Source(path)
@@ -245,7 +335,19 @@ def run(mode: str, path: Path, out: Path, ocr: bool = False, progress=lambda e: 
         rep.update(saved=not missing, files=1 + len(rel), missing_assets=missing)
     elif mode == "json":
         captures, state = [], "unverified"
+        tables = None
         try:
+            tables = table_images(Path(path), ir, out / "assets" / "tables", progress)
+        except Exception as e:  # noqa: BLE001
+            shutil.rmtree(out / "assets" / "tables", ignore_errors=True)
+            notes.append(f"표별 이미지 실패 · 쪽 단위 표 캡처로 대신함 ({str(e)[:120]})")
+        if tables is None and not any(n.startswith("표별 이미지") for n in notes):
+            notes.append("표별 이미지: 이 엔진에는 표마다 그리는 기능이 없어 쪽 단위 표 캡처로 대신함")
+        if tables is not None and tables["not_rendered"]:
+            notes.append(f"표 이미지 미생성 {tables['not_rendered']}개 (표 {tables['tables']}개 중) · 결과 보기 목록에 사유 표시")
+        try:
+            if tables is not None:
+                raise StopIteration  # every table has its own image or a recorded reason: no page captures
             import pymupdf
 
             cap_dir = out / ".captures"
@@ -256,6 +358,8 @@ def run(mode: str, path: Path, out: Path, ocr: bool = False, progress=lambda e: 
                     page.get_pixmap(clip=t.bbox, dpi=160).save(str(f))
                     captures.append((no, f))
             state = "ok" if captures else "none_detected"
+        except StopIteration:
+            state = "not_used"
         except Exception as e:  # noqa: BLE001
             notes.append(f"표 캡처 미확인: 미리보기 PDF를 만들지 못함 ({str(e)[:120]})")
         emb = {}
@@ -269,7 +373,7 @@ def run(mode: str, path: Path, out: Path, ocr: bool = False, progress=lambda e: 
                 n["asset"] = f"assets/embedded/bin{m.group(1)}{Path(emb[int(m.group(1))][0]).suffix}"
         progress({"stage": "저장"})
         summary = build_json_bundle(out, ir, Path(path).name, rep["source_sha256"], captures=captures,
-                                    capture_state=state, embedded=emb, ocr={})
+                                    capture_state=state, embedded=emb, ocr={}, table_images=tables)
         shutil.rmtree(out / ".captures", ignore_errors=True)
         rep.update(saved=True, bundle=summary)
     elif mode in ("hwpx", "hwp"):
@@ -301,6 +405,36 @@ def _file_manifest(out: Path) -> list[dict]:
     """sha256 of every published file, so a result loaded later can be checked for changes."""
     return [{"path": p.relative_to(out).as_posix(), "sha256": _sha(p), "bytes": p.stat().st_size}
             for p in sorted(out.rglob("*")) if p.is_file() and p.name != "report.json"]
+
+
+def zip_result(folder: Path, target: Path, progress=lambda e: None) -> dict:
+    """One .zip of a result folder for sending it on; the folder itself stays as the app's working copy.
+
+    The zip holds the folder by name, so its relative image paths still resolve after unzipping.
+    PNGs are stored (already compressed); text is deflated. Written to a temporary name and renamed,
+    so a half-written zip is never left under the final name, and an existing file is never replaced.
+    """
+    import zipfile
+
+    from .publish import unique_target
+
+    folder, target = Path(folder), Path(target)
+    files = sorted(p for p in folder.rglob("*") if p.is_file())
+    tmp = target.parent / f".govparse-zip-{os.getpid()}-{folder.name}.tmp"
+    try:
+        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
+            for i, p in enumerate(files):
+                if i % 50 == 0:
+                    progress({"stage": "압축", "done": i, "total": len(files)})
+                kind = zipfile.ZIP_STORED if p.suffix.lower() in (".png", ".jpg", ".jpeg", ".gif") else zipfile.ZIP_DEFLATED
+                z.write(p, (Path(folder.name) / p.relative_to(folder)).as_posix(), compress_type=kind)
+        progress({"stage": "압축", "done": len(files), "total": len(files)})
+        final = unique_target(target)
+        os.rename(tmp, final)  # fails instead of overwriting
+    finally:
+        if tmp.exists():
+            tmp.unlink()
+    return {"zip": str(final), "files": len(files), "bytes": final.stat().st_size}
 
 
 def verify_manifest(folder: Path) -> dict | None:
@@ -418,12 +552,18 @@ def index(json_path: Path) -> dict:
     for a in listed:
         f = base / a["path"]
         o = a.get("ocr") or {}
-        assets.append({"origin": a["origin"], "page": a.get("page"), "path": a["path"], "file": str(f),
-                       "exists": f.is_file(), "ocr_status": o.get("status", "not_run"),
-                       "ocr_texts": o.get("texts", []),
-                       "text": " / ".join(text_by_path.get(a["path"], []))})
+        row = {"origin": a["origin"], "page": a.get("page"), "path": a["path"], "file": str(f),
+               "exists": f.is_file(), "ocr_status": o.get("status", "not_run"),
+               "ocr_texts": o.get("texts", []),
+               "text": " / ".join(text_by_path.get(a["path"], []))}
+        if a["origin"] == "table_image":
+            label = table_label(a["table_id"])
+            row.update(table_id=a["table_id"], part=a["part"], parts=a["parts"], label=label,
+                       text=label + (f" · {a['part']}/{a['parts']}쪽 조각" if a["parts"] > 1 else ""))
+        assets.append(row)
     return {"assets": [a for a in assets if a["exists"]], "missing": [a["path"] for a in assets if not a["exists"]],
             "capture_state": meta.get("capture_state"), "source_name": meta.get("source_name"),
+            "table_images": meta.get("table_images"),
             "integrity": verify_manifest(base), "convertible": True}
 
 
@@ -489,6 +629,8 @@ def _dispatch(argv: list[str]):
         return index(Path(argv[1]))
     if mode == "ocr":
         return ocr(Path(argv[1]))
+    if mode == "zip":
+        return zip_result(Path(argv[1]), Path(argv[2]), progress=emit_progress)
     if mode in ("settings", "settings-set"):
         from . import ocr_engines, settings
 

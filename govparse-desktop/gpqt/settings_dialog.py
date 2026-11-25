@@ -17,6 +17,7 @@ class SettingsDialog(QDialog):
         self.saved_label = None
         self.descriptions: dict[str, str] = {}
         title = QLabel("OCR 엔진")
+        title.setStyleSheet("font-weight: 700; font-size: 12pt;")
         sub = QLabel("‘이 그림 OCR’을 누를 때 그림 속 글자를 읽는 방법입니다. 쓸 수 없는 엔진은 이유와 함께 흐리게 표시됩니다.")
         sub.setWordWrap(True)
         set_tone(sub, "muted")
@@ -30,6 +31,7 @@ class SettingsDialog(QDialog):
         self.save = QPushButton("저장")
         self.save.setObjectName("settingsSave")
         self.save.setEnabled(False)
+        self.save.setProperty("kind", "primary")
         self.cancel = QPushButton("취소")
         self.cancel.setObjectName("settingsCancel")
         buttons = QHBoxLayout()

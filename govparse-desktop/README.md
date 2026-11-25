@@ -1,8 +1,10 @@
 # GovParse Desktop
 
-GovParse Desktop is a document review and export application. The shared PySide6 interface runs on Windows, macOS, and Linux. Windows-specific WinForms files and the installer source remain available for the existing Windows build.
+GovParse Desktop is a document review and export application. The PySide6 interface is intended to be cross-platform; this preview snapshot has been exercised on Windows only. macOS and Linux runs have not been verified. Windows-specific WinForms files and the installer source remain available for the existing Windows build.
 
-The app uses the GovParse MCP engine for document parsing and restoration. The engine is installed separately. The app can find an engine registered in LM Studio or Claude. For a checkout of the combined repository, it also finds the engine source in the sibling src/ directory.
+The desktop worker parses documents with rhwp. The JSON + PNG export uses GovParse for verified table images. HWPX export uses the app's IR and the vendored restorer in `gpdesk/vendor/hwp_restore.py` (engine commit `ea53268`). The separate MCP restorer has its own round-trip measurements.
+
+OCR can discover a configured engine Python from a Windows LM Studio or Claude registration. For manual configuration, supply the executable and model paths as shown below.
 
 ## PySide6 application
 
@@ -13,7 +15,11 @@ From this directory:
     uv sync --locked --group dev
     uv run python -m gpqt.app
 
-Set the engine Python and engine source in the user-local config.json only when discovery from the MCP client configuration is unavailable. OCR uses the model directory configured for the engine. Model weights are not included in this source checkout.
+When MCP discovery is unavailable, place a local `config.json` next to this README with the engine paths for the current OS, for example:
+
+    {"engine_python": "/path/to/python", "engine_src": "/path/to/document-parser-mcp/src", "ocr_models": "/path/to/rapidocr/models"}
+
+OCR uses the model directory configured for the engine. Model weights are not included in this source checkout.
 
 ## GUI tests
 
@@ -23,7 +29,7 @@ From this directory:
 
     uv run pytest qt/tests -m "not integration" -q
 
-The four integration tests use the real worker and synthetic fixtures. They require the GovParse source checkout and its runtime dependencies. Set QT_QPA_PLATFORM=offscreen to run the GUI tests without a display. For a visible manual check, start the app and open samples/synthetic-figures.hwpx.
+Run the three real-worker tests with `uv run pytest qt/tests -m integration -q`. They open synthetic documents, export JSON and PNG, and reopen results after moving the files. To inspect the screen, start the app and open `samples/synthetic-figures.hwpx`.
 
 ## Windows compatibility app
 

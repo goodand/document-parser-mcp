@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (QHBoxLayout, QLabel, QPlainTextEdit, QPushButton,
                                QVBoxLayout, QWidget)
 
 TONES = {"ok": "#198100", "warn": "#B25400", "muted": "#63707E", "text": "#1F2A37"}
+
 PRIMARY = "#00646E"
 
 
@@ -90,6 +91,7 @@ class PageView(QWidget):
     def __init__(self, names: tuple[str, str, str] | None = None, empty_text: str = "", action_text: str | None = None):
         super().__init__()
         self.scroll = QScrollArea()
+        self.scroll.setObjectName("pageScroll")
         self.scroll.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
         self.picture = QLabel()
         self.picture.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
@@ -158,9 +160,11 @@ class PageView(QWidget):
                 sx = out.width()
                 for op in ops:
                     if op[0] == "notice":
-                        p.fillRect(QRectF(8, 8, sx - 16, 28), QColor("#FFF7EB"))
+                        flags = Qt.AlignLeft | Qt.AlignVCenter | Qt.TextWordWrap
+                        box = p.boundingRect(QRectF(16, 12, sx - 32, 400), flags, op[1])
+                        p.fillRect(QRectF(8, 8, sx - 16, box.height() + 8), QColor("#FFF7EB"))
                         p.setPen(QColor(TONES["warn"]))
-                        p.drawText(QRectF(12, 8, sx - 24, 28), Qt.AlignVCenter, op[1])
+                        p.drawText(QRectF(16, 12, sx - 32, box.height()), flags, op[1])
                     else:
                         _, (x, y, w, h), (pw, ph), label, color, dashed = op
                         k = out.width() / pw if pw else 1
@@ -177,8 +181,8 @@ class PageView(QWidget):
         self.picture.setPixmap(out)
 
     def _scaled_size(self, pm: QPixmap) -> QSize:
-        vw = max(100, self.scroll.viewport().width() - 32)
-        vh = max(100, self.scroll.viewport().height() - 16)
+        vw = max(240, self.scroll.viewport().width() - 32)
+        vh = max(240, self.scroll.viewport().height() - 16)
         if self.zoom == "폭 맞춤":
             w = min(1100, vw)
             return QSize(w, int(pm.height() * w / max(1, pm.width())))
@@ -209,6 +213,7 @@ class OcrBox(QWidget):
         self.text.setObjectName("ocrText")
         self.text.setReadOnly(True)
         self.text.setAccessibleName("OCR 결과 텍스트")
+        self.text.setMaximumHeight(150)
         bar = QHBoxLayout()
         bar.addWidget(self.run_btn)
         bar.addWidget(self.copy_btn)

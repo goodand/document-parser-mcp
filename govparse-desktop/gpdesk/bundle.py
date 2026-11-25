@@ -1,8 +1,9 @@
 """JSON + PNG bundle: original IR untouched under ``source_ir`` plus an asset list.
 
-Asset origins are kept apart: ``embedded_picture`` (bytes from the source file)
-and ``rendered_table_capture`` (crop of the Hancom-rendered PDF). Captures are
-linked to a page only; no table/cell link is invented.
+Asset origins are kept apart: ``embedded_picture`` (bytes from the source file),
+``table_image`` (one table rendered on its own by the engine after matching the source XML;
+linked by table_id) and ``rendered_table_capture`` (crop of a rendered page; fallback for an
+engine without the per-table renderer). Captures are linked to a page only; no table/cell link is invented.
 """
 
 from __future__ import annotations
@@ -46,7 +47,8 @@ def collect_table_pngs(img_dir: Path, expected: int) -> list[tuple[int, Path]]:
 
 def build_json_bundle(out: Path, ir: dict, source_name: str, source_sha256: str, *,
                       captures: list[tuple[int, Path]], capture_state: str,
-                      embedded: dict[int, tuple[str, bytes]], ocr: dict[str, OcrStatus]) -> dict:
+                      embedded: dict[int, tuple[str, bytes]], ocr: dict[str, OcrStatus],
+                      table_images: dict | None = None) -> dict:
     out = Path(out)
     assets = []
     uris = collect_picture_uris(ir)
@@ -69,6 +71,12 @@ def build_json_bundle(out: Path, ir: dict, source_name: str, source_sha256: str,
         st = ocr.get(src.name, OcrStatus("not_run"))
         assets.append({"origin": "rendered_table_capture", "page": page, "path": rel,
                        "table_ref": None, "ocr": asdict(st)})
+    from .table_ids import iter_table_images  # IR blocks already annotated by desktop_worker.table_images
+
+    for table_id, paths in iter_table_images(ir):
+        for part, rel in enumerate(paths, start=1):
+            assets.append({"origin": "table_image", "table_id": table_id, "part": part, "parts": len(paths),
+                           "path": rel})
     summary = {
         "source_name": source_name,
         "source_sha256": source_sha256,
@@ -76,9 +84,12 @@ def build_json_bundle(out: Path, ir: dict, source_name: str, source_sha256: str,
         "counts": {
             "embedded_picture": sum(a["origin"] == "embedded_picture" for a in assets),
             "rendered_table_capture": len(captures) if capture_state in ("ok", "none_detected") else None,
+            "table_image": sum(a["origin"] == "table_image" for a in assets),
         },
+        "table_images": table_images,
         "missing_pictures": missing,
-        "notes": "rendered_table_capture is linked to a PDF page only; table/cell link not proven.",
+        "notes": ("table_image is linked to its IR table by table_id; rendered_table_capture is linked to a "
+                  "PDF page only; table/cell link not proven."),
     }
     payload = {"source_ir": ir, "govparse_desktop": {**summary, "assets": assets}}
     (out / "document.json").write_text(json.dumps(payload, ensure_ascii=False, indent=1), "utf-8")

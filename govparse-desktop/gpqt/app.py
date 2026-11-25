@@ -22,6 +22,7 @@ from .figures import FigurePanel, SearchBox, norm
 from .paths import base_name, same_path, unique
 from .platform import CurrentPlatform
 from .settings_dialog import SettingsDialog
+from . import theme
 from .status import ago, progress_text
 from .widgets import TONES, CopyTree, OcrBox, PageView, Poster, copy_picture, run_bg, set_tone
 from .worker import temp_png
@@ -81,8 +82,6 @@ class MainWindow(QMainWindow):
         self.worker = worker
         self.dialogs = dialogs or QtDialogs()
         self.platform = platform or CurrentPlatform()
-        # Keep the queued callback receiver in the window's QObject lifetime so
-        # late worker completions are discarded when the window closes.
         self.poster = Poster(self)
         self.worker_shutdown_called = False
         self.setWindowTitle("GovParse Desktop")
@@ -129,9 +128,14 @@ class MainWindow(QMainWindow):
     def _build(self):
         root = QWidget()
         lay = QVBoxLayout(root)
-        top = QHBoxLayout()
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        top_bar = QWidget()
+        top_bar.setObjectName("topBar")
+        top = QHBoxLayout(top_bar)
+        top.setContentsMargins(14, 10, 14, 6)
         brand = QLabel("GovParse Desktop")
-        brand.setStyleSheet(f"font-weight: bold; color: {TONES['text']};")
+        brand.setObjectName("brand")
         top.addWidget(brand)
         self.tab_orig = self._btn("원본 보기", "tabOriginal")
         self.tab_result = self._btn("결과 보기", "tabResult")
@@ -146,9 +150,12 @@ class MainWindow(QMainWindow):
         for w in (self.tab_orig, self.tab_result, self.btn_open, self.btn_load, self.btn_settings, self.btn_manual, self.lbl_file):
             top.addWidget(w)
         top.addStretch(1)
-        lay.addLayout(top)
+        lay.addWidget(top_bar)
 
-        tools = QHBoxLayout()
+        tools_bar = QWidget()
+        tools_bar.setObjectName("topBar")
+        tools = QHBoxLayout(tools_bar)
+        tools.setContentsMargins(14, 2, 14, 8)
         self.btn_prev = self._btn("이전", "btnPrev")
         self.lbl_page = QLabel("– / –")
         self.lbl_page.setObjectName("lblPage")
@@ -158,9 +165,13 @@ class MainWindow(QMainWindow):
         for w in (self.btn_prev, self.lbl_page, self.btn_next, self.btn_zoom, self.btn_figures):
             tools.addWidget(w)
         tools.addStretch(1)
-        lay.addLayout(tools)
+        lay.addWidget(tools_bar)
 
-        strip = QHBoxLayout()
+        strip_bar = QWidget()
+        strip_bar.setObjectName("strip")
+        strip = QHBoxLayout(strip_bar)
+        strip.setContentsMargins(14, 5, 14, 5)
+        strip.setSpacing(18)
         self.st_struct = QLabel("구조: 문서를 열면 자동으로 읽습니다")
         self.st_struct.setObjectName("stStructure")
         self.st_preview = QLabel("")
@@ -177,7 +188,7 @@ class MainWindow(QMainWindow):
             strip.addWidget(w)
         strip.addStretch(1)
         strip.addWidget(self.busy)
-        lay.addLayout(strip)
+        lay.addWidget(strip_bar)
 
         # original tab
         self.orig = PageView(("origView", "origMessage", "origAction"), "HWP 또는 HWPX 파일을 여기에 놓으세요", "파일 열기")
@@ -200,10 +211,14 @@ class MainWindow(QMainWindow):
         for w in (self.asset_preview, self.result_web, self.result_pages):
             self.result_view.stack.addWidget(w)
         side = QWidget()
+        side.setObjectName("sidePanel")
+        side.setMinimumWidth(380)
         sl = QVBoxLayout(side)
+        sl.setContentsMargins(12, 10, 12, 10)
         self.res_title = QLabel("")
         self.res_title.setObjectName("resTitle")
-        self.res_title.setStyleSheet("font-weight: bold;")
+        self.res_title.setStyleSheet("font-weight: 700; font-size: 11pt;")
+        self.res_title.setWordWrap(True)
         self.res_state = QLabel("")
         self.res_state.setObjectName("resState")
         self.res_notes = QLabel("")
@@ -217,6 +232,8 @@ class MainWindow(QMainWindow):
         self.assets.setColumnCount(4)
         self.assets.setHeaderLabels(["자산", "출처", "위치 / 설명", "원본 파일"])
         self.assets.setRootIsDecorated(False)
+        for c, w in enumerate((110, 80, 280, 200)):
+            self.assets.setColumnWidth(c, w)
         self.assets.setContextMenuPolicy(Qt.CustomContextMenu)
         self.assets.customContextMenuRequested.connect(
             lambda pos: self.asset_context_menu(self.assets.itemAt(pos)).popup(self.assets.viewport().mapToGlobal(pos)))
@@ -226,9 +243,11 @@ class MainWindow(QMainWindow):
         self.btn_zip = self._btn("압축 파일 보기", "btnOpenZip")
         self.btn_to_html = self._btn("HTML로 변환", "btnToHtml")
         self.btn_to_hwpx = self._btn("HWPX로 변환", "btnToHwpx")
-        actions = QHBoxLayout()
-        for b in (self.btn_external, self.btn_folder, self.btn_zip, self.btn_to_html, self.btn_to_hwpx):
-            actions.addWidget(b)
+        from PySide6.QtWidgets import QGridLayout
+
+        actions = QGridLayout()
+        for i, b in enumerate((self.btn_external, self.btn_folder, self.btn_zip, self.btn_to_html, self.btn_to_hwpx)):
+            actions.addWidget(b, i // 3, i % 3)
         for w in (self.res_title, self.res_state, self.res_notes, self.asset_search, self.assets, self.result_ocr):
             sl.addWidget(w)
         sl.addLayout(actions)
@@ -243,7 +262,10 @@ class MainWindow(QMainWindow):
         self.main.addWidget(self.result_split)
         lay.addWidget(self.main, 1)
 
-        bottom = QHBoxLayout()
+        bottom_bar = QWidget()
+        bottom_bar.setObjectName("bottomBar")
+        bottom = QHBoxLayout(bottom_bar)
+        bottom.setContentsMargins(14, 8, 14, 4)
         bottom.addWidget(QLabel("내보낼 형식"))
         self.btn_format = self._btn("JSON + PNG ▾", "btnFormat")
         self.btn_export = self._btn("내보내기", "btnExport")
@@ -252,10 +274,19 @@ class MainWindow(QMainWindow):
         for w in (self.btn_format, self.btn_export, self.btn_cancel):
             bottom.addWidget(w)
         bottom.addStretch(1)
-        lay.addLayout(bottom)
+        lay.addWidget(bottom_bar)
         self.status = QLabel("")
         self.status.setObjectName("statusText")
+        self.status.setContentsMargins(14, 2, 14, 8)
+        self.status.setWordWrap(True)
         lay.addWidget(self.status)
+        # button kinds (Astryx: primary for the one main action per area)
+        for b in (self.tab_orig, self.tab_result):
+            theme.kind(b, "tab")
+        for b in (self.btn_export, self.orig.action):
+            theme.kind(b, "primary")
+        for b in (self.btn_open, self.btn_load, self.btn_settings, self.btn_manual):
+            theme.kind(b, "ghost")
         self.setCentralWidget(root)
 
         self.tab_orig.clicked.connect(lambda: self.switch_tab(False))
@@ -346,11 +377,14 @@ class MainWindow(QMainWindow):
     def _set_active_tab(self):
         for b, on in ((self.tab_orig, not self.showing_result), (self.tab_result, self.showing_result)):
             b.setProperty("active", on)
-            b.setStyleSheet(f"font-weight: bold; color: {TONES['text']};" if on else "")
+            theme.repolish(b)
 
     def switch_tab(self, result: bool):
         self.showing_result = bool(result)
         self.main.setCurrentIndex(1 if self.showing_result else 0)
+        if self.showing_result and self.result_split.width() > 700:
+            w = self.result_split.width()
+            self.result_split.setSizes([w - 460, 460])
         self._set_active_tab()
         self.refresh()
 
@@ -528,6 +562,10 @@ class MainWindow(QMainWindow):
     def toggle_figures(self):
         self.figures_open = not self.figures_open
         self.figures.setVisible(self.figures_open)
+        if self.figures_open:
+            total = max(self.orig_split.width(), 900)
+            panel = min(620, max(420, total // 2))
+            self.orig_split.setSizes([total - panel, panel])
         if self.figures_open and self.source and self.figures.source != self.source:
             self.figures.open(self.source)
 
@@ -1080,6 +1118,7 @@ class _Cancelled(Exception):
 
 def main() -> int:
     app = QApplication(sys.argv)
+    theme.apply(app)
     w = MainWindow()
     w.show()
     return app.exec()

@@ -109,12 +109,13 @@ def _alive_unix(path: str) -> bool:
 
 
 def _alive_windows(path: str) -> bool:
-    """Reject stale or inaccessible pipe names left in the Windows namespace."""
+    """Check that a listed pipe has a connectable instance without sending a request."""
     try:
-        reply = request(path, "state", timeout=1.0)
-    except (OSError, TimeoutError, json.JSONDecodeError):
-        return False
-    return isinstance(reply, dict) and isinstance(reply.get("status"), str)
+        with open(path, "r+b", buffering=0):
+            return True
+    except OSError as exc:
+        # All instances in use still identifies a live server.
+        return getattr(exc, "winerror", None) == 231
 
 
 def discover(directory: Path | None = None) -> Found:

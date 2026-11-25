@@ -26,7 +26,7 @@ class WorkerError(RuntimeError):
 def _env() -> dict:
     env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
     paths = [str(APP)]
-    engine = APP.parent.parent / "src"
+    engine = APP.parent / "src"
     if (engine / "govparse").is_dir():
         paths.append(str(engine))
     if env.get("PYTHONPATH"):

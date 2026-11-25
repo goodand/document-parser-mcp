@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QGroupBox, QHBoxLay
                                QListWidgetItem, QMenu, QPlainTextEdit, QPushButton, QSplitter, QTreeWidgetItem,
                                QVBoxLayout, QWidget)
 
+from . import theme
 from .widgets import TONES, CopyTree, OcrBox, copy_picture, run_bg, set_tone
 
 STATUS = {"auto_explicit": "설명 있음", "user_linked": "설명 지정함", "user_shared": "설명 지정함(공통)",
@@ -85,6 +86,9 @@ class FigurePanel(QWidget):
         self.list.setHeaderLabels(["그림", "설명 여부", "설명", "문서 안 위치", "원본 유형"])
         self.list.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.list.setIconSize(QPixmap(64, 48).size())
+        self.list.setIndentation(12)
+        for c, w in enumerate((128, 92, 170, 230, 200)):
+            self.list.setColumnWidth(c, w)
         self.list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.list.customContextMenuRequested.connect(self._context_menu)
         self.detail = QLabel("")
@@ -142,13 +146,18 @@ class FigurePanel(QWidget):
         split = QSplitter(Qt.Vertical)
         split.addWidget(self.list)
         split.addWidget(self.lower)
+        split.setStretchFactor(0, 3)
+        split.setStretchFactor(1, 2)
         lay = QVBoxLayout(self)
+        lay.setContentsMargins(12, 10, 12, 8)
+        self.summary.setStyleSheet("line-height: 140%;")
         lay.addWidget(self.summary)
         lay.addLayout(bar)
         lay.addWidget(split, 1)
         lay.addWidget(self.status)
         self._apply_mode()
 
+        theme.kind(self.save_btn, "primary")
         self.filter.currentIndexChanged.connect(lambda _: self.fill())
         self.search.textChanged.connect(lambda _: self._search_changed())
         self.edit_btn.clicked.connect(self.toggle_edit)
@@ -166,6 +175,7 @@ class FigurePanel(QWidget):
             g.setVisible(self.edit)
         self.to_caption.setVisible(self.edit)
         self.edit_btn.setProperty("active", self.edit)
+        theme.kind(self.edit_btn, "tab" if self.edit else "ghost")
         # the OCR box lives in group ② while editing
         self.ocr.setParent(None)
         if self.edit:
@@ -284,6 +294,8 @@ class FigurePanel(QWidget):
                 g = QTreeWidgetItem([link.get("path_text", "")])
                 g.setFlags(Qt.ItemIsEnabled)
                 self.list.addTopLevelItem(g)
+                g.setFirstColumnSpanned(True)          # the location heading uses the whole row
+                g.setForeground(0, QBrush(QColor(theme.PRIMARY)))
                 g.setExpanded(True)
                 groups[key] = g
             caption = (link.get("caption_text") or "").replace("\n", " ")
