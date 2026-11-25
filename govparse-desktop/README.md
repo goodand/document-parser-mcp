@@ -1,28 +1,45 @@
 # GovParse Desktop
 
-A Windows desktop front end for the GovParse MCP engine. The app creates JSON and HTML exports, reviews embedded pictures, captures rendered tables, and restores editable HWPX. Saving as HWP uses Hancom Office when available.
+GovParse Desktop is a document review and export application. The shared PySide6 interface runs on Windows, macOS, and Linux. Windows-specific WinForms files and the installer source remain available for the existing Windows build.
 
-## Requirements
+The app uses the GovParse MCP engine for document parsing and restoration. The engine is installed separately. The app can find an engine registered in LM Studio or Claude. For a checkout of the combined repository, it also finds the engine source in the sibling src/ directory.
 
-- Windows x64 and Python 3.12 for development
-- Hancom Office for HWP conversion and GUI verification
-- GovParse MCP engine, installed separately
+## PySide6 application
 
-The engine is not bundled. Set its Python and source paths in a user-local config.json or let the app discover GovParse from LM Studio or Claude configuration. See manual.html for user instructions.
+Requirements: Python 3.12 or 3.13 and uv.
 
-## Development
+From this directory:
 
-Install the locked environment with uv:
+    uv sync --locked --group dev
+    uv run python -m gpqt.app
 
-    uv sync --locked --python 3.12
-    uv run pytest tests -m "not live"
+Set the engine Python and engine source in the user-local config.json only when discovery from the MCP client configuration is unavailable. OCR uses the model directory configured for the engine. Model weights are not included in this source checkout.
 
-Live integration tests require a configured engine. HWP export and GUI verification also require Hancom Office.
+## GUI tests
 
-Build the Windows installer from an activated environment with:
+The PySide6 tests exercise the application offscreen with a scripted worker and synthetic document data. They locate widgets by objectName and check interactions and state. They do not compare screenshot pixels.
+
+From this directory:
+
+    uv run pytest qt/tests -m "not integration" -q
+
+The four integration tests use the real worker and synthetic fixtures. They require the GovParse source checkout and its runtime dependencies. Set QT_QPA_PLATFORM=offscreen to run the GUI tests without a display. For a visible manual check, start the app and open samples/synthetic-figures.hwpx.
+
+## Windows compatibility app
+
+Desktop.cs, FigurePanel.cs, Theme.cs, and SettingsForm.cs implement the existing WinForms build. On Windows x64 with the .NET Framework C# compiler and the local OCR model dependencies configured, build it with:
 
     uv run python build.py
 
-The installer and bundled runtime are generated under dist/. Build on Windows x64 with the .NET Framework C# compiler available at the Windows path used by build.py.
+The installer and bundled runtime are generated under dist/. They are build outputs and are not included in the source repository.
 
-Synthetic fixtures and their generator scripts are used for regression tests. Real source documents and OCR model weights are not included.
+## Project layout
+
+- gpqt/ contains the cross-platform PySide6 interface.
+- gpdesk/ contains the document worker, exports, figure review, and platform-neutral processing.
+- worker.py starts the document worker.
+- qt/ contains the GUI behavior specification and pytest-qt tests.
+- tests/ contains worker and export tests.
+- samples/ contains generated synthetic fixtures and their generators.
+
+Real source documents, credentials, local configuration, compiled installers, and model weights do not belong in this repository.

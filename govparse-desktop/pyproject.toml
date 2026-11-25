@@ -1,7 +1,7 @@
 [project]
 name = "govparse-desktop"
 version = "0.1.0"
-description = "Private Windows desktop front-end for the local govparse engine"
+description = "Cross-platform PySide6 desktop front end for the GovParse engine"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "PySide6==6.8.1",
