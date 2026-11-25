@@ -91,15 +91,28 @@ def xml_records(tables, parent="", border_styles=None, geometry=False):
                 layout["paragraph_refs"] = [
                     p.get("paraPrIDRef", "0") for p in paragraphs for _ in paragraph_blocks(p)
                 ]
+                vector_anchors = {}
                 anchor_lines = {}
                 offset = 0
                 for paragraph in paragraphs:
                     blocks = list(paragraph_blocks(paragraph))
-                    if blocks == [("table", "")]:
+                    children = paragraph.findall("p:run/*", HP)
+                    vector_tags = {f"{{{HP['p']}}}{kind}" for kind in ("polygon", "container", "line", "rect", "ellipse")}
+                    vectors = [child for child in children if child.tag in vector_tags]
+                    if (vectors and blocks == [("paragraph", "")] and
+                            all(child.tag in vector_tags or child.tag == f"{{{HP['p']}}}t" for child in children) and
+                            not any(n.get("binaryItemIDRef") or n.tag.endswith(("}drawText", "}subList", "}ole"))
+                                    for shape in vectors for n in shape.iter())):
+                        vector_anchors[str(offset)] = [ET.tostring(shape, encoding="unicode", with_tail=False)
+                                                       for shape in vectors]
+                    simple_text = len(blocks) == 1 and all(child.tag == f"{{{HP['p']}}}t" for child in children)
+                    if blocks == [("table", "")] or str(offset) in vector_anchors or simple_text:
                         lines = paragraph.findall("p:linesegarray/p:lineseg", HP)
                         if lines:
                             anchor_lines[str(offset)] = [dict(line.attrib) for line in lines]
                     offset += len(blocks)
+                if vector_anchors:
+                    layout["vector_anchors"] = vector_anchors
                 if anchor_lines:
                     layout["table_anchor_lines"] = anchor_lines
                 yield key, layout
@@ -226,35 +239,51 @@ def attach_cell_borders(ir, source):
     with ZipFile(source) as package:
         header = ET.fromstring(package.read("Contents/header.xml"))
         sections = [n for n in package.namelist() if re.fullmatch(r"Contents/section\d+\.xml", n)]
-        if len(sections) > 1:
-            geometries = {}
-            for name in sections:
-                section_index = re.search(r"section(\d+)\.xml$", name).group(1)
-                root = ET.fromstring(package.read(name))
-                pages = root.findall(".//p:secPr/p:pagePr", HP)
-                if len(pages) == 1 and (margin := pages[0].find("p:margin", HP)) is not None:
-                    geometries[section_index] = {"page": dict(pages[0].attrib), "margin": dict(margin.attrib)}
-            if geometries:
-                ir["section_page_geometry"] = geometries
-        if len(sections) == 1:
-            section = ET.fromstring(package.read(sections[0]))
+        section_blocks = {}
+        for body_index, block in enumerate(ir["body"]):
+            provenance = block.get("prov") or {}
+            section_blocks.setdefault(provenance.get("section_idx"), []).append((body_index, block))
+        geometries = {}
+        for name in sections:
+            section_index = int(re.search(r"section(\d+)\.xml$", name)[1])
+            section = ET.fromstring(package.read(name))
+            pages = section.findall(".//p:secPr/p:pagePr", HP)
+            if len(pages) == 1 and (margin := pages[0].find("p:margin", HP)) is not None:
+                geometries[str(section_index)] = {"page": dict(pages[0].attrib), "margin": dict(margin.attrib)}
             paragraphs = section.findall("p:p", HP)
-            for block in ir["body"]:
+            for body_index, block in section_blocks.get(section_index, []):
                 prov = block.get("prov") or {}
                 index = prov.get("para_idx")
-                if (block.get("kind") != "paragraph" or prov.get("section_idx") != 0
+                if (block.get("kind") != "paragraph"
                         or not isinstance(index, int) or not 0 <= index < len(paragraphs)):
                     continue
                 original = paragraphs[index]
+                children = original.findall("p:run/*", HP)
+                if (index == 0 and not block.get("text") and children
+                        and all(child.tag == f"{{{HP['p']}}}secPr" for child in children)):
+                    block["section_setup_only"] = True
+                following = ir["body"][body_index + 1:body_index + 2]
+                if (not block.get("text") and len(children) == 1 and children[0].tag == f"{{{HP['p']}}}tbl"
+                        and following and following[0]["kind"] == "table"
+                        and (following[0].get("prov") or {}).get("para_idx") == index
+                        and (following[0].get("prov") or {}).get("section_idx") == section_index
+                        and original.get("pageBreak", "0") == "0"):
+                    block["table_anchor_only"] = True
                 if original.get("pageBreak") == "1":
                     text = "".join(text_content(t) for t in original.findall("p:run/p:t", HP))
                     if text == block.get("text"):
                         block["page_break_before"] = True
-            pages = section.findall(".//p:secPr/p:pagePr", HP)
-            if len(pages) == 1 and (margin := pages[0].find("p:margin", HP)) is not None:
-                ir["page_geometry"] = {"page": dict(pages[0].attrib), "margin": dict(margin.attrib)}
+        if len(sections) > 1 and geometries:
+            ir["section_page_geometry"] = geometries
+        elif "0" in geometries:
+            ir["page_geometry"] = geometries["0"]
     ir["character_heights"] = {
         prop.get("id"): int(prop.get("height"))
+        for prop in header.findall(".//{*}charProperties/{*}charPr")
+    }
+    ir["character_metrics"] = {
+        prop.get("id"): {name: dict(child.attrib) for name in ("ratio", "spacing", "relSz", "offset")
+                         if (child := prop.find("{*}" + name)) is not None}
         for prop in header.findall(".//{*}charProperties/{*}charPr")
     }
     ir["paragraph_layouts"] = {

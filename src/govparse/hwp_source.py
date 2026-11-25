@@ -26,7 +26,7 @@ from .normalize import sha256_of
 
 DOCUMENT = "document.json"
 MANIFEST = "_source_manifest.json"
-SOURCE_MANIFEST_VERSION = 23
+SOURCE_MANIFEST_VERSION = 24
 
 
 def _rhwp_parse(path: Path) -> Any:
@@ -145,6 +145,21 @@ def _attach_pictures(ir, native):
                         uri = node.get("image", {}).get("uri", "")
                         if image is not None and uri.startswith("bin://") and image.get("binaryItemIDRef") == "image" + uri[6:]:
                             matched[id(node)] = pic
+                # Recover a trailing inline image only when the complete prefix aligns
+                # with the native cell and the image placement is independently matched.
+                paragraphs = tc.findall("./{*}subList/{*}p")
+                if nodes and paragraphs and len(children) >= 2 and children[-1]["kind"] == "picture":
+                    last = paragraphs[-1].findall("./{*}run/*")
+                    content = [el for el in last if not (el.tag.endswith("}t") and not len(el) and not el.text)]
+                    if (content and content[-1] is matched.get(id(children[-1]))
+                            and all(el.tag.endswith("}t") for el in content[:-1])
+                            and children[-2]["kind"] == "paragraph"):
+                        from .table_roundtrip import cell_blocks, text_content
+                        prefix = [("table", "") if b["kind"] == "table" else (b["kind"], b.get("text", ""))
+                                  for b in children[:-1]]
+                        if (prefix == list(cell_blocks(tc)) and children[-2].get("text")
+                                == "".join(text_content(el) for el in content[:-1])):
+                            children[-1]["inline_after_paragraph"] = True
                 if has_cell_picture and len(nodes) == len(pics) and all(id(node) in matched for node in nodes):
                     source_blocks = []
                     for para in tc.findall("./{*}subList/{*}p"):

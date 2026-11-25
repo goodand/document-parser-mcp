@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import math
 import re
 import os
 import tempfile
@@ -226,7 +227,7 @@ def _record_subtrees(records):
     return output
 
 
-def _crop_png(png: bytes, margin: int = 12) -> tuple[bytes, bool]:
+def _crop_png(png: bytes, margin: int = 12, page_svg=None) -> tuple[bytes, bool]:
     """Crop to non-white content with a safety margin; fail if that is uncertain."""
     from PIL import Image, ImageChops
 
@@ -234,6 +235,23 @@ def _crop_png(png: bytes, margin: int = 12) -> tuple[bytes, bool]:
     bbox = ImageChops.difference(image, Image.new("RGB", image.size, "white")).getbbox()
     if not bbox:
         raise ValueError("rendered_page_has_no_crop_content")
+    # A folio outside the body can make a small table look a full page tall.
+    # Restrict the raster only when the renderer supplies its body clipping rectangle.
+    if page_svg is not None and bbox[3] > image.height * 0.85:
+        svg = ET.fromstring(page_svg().encode("utf8"))
+        for group in svg.iterfind(".//{*}g[@clip-path]"):
+            ref = re.fullmatch(r"url\(#(body-clip-[0-9]+)\)", group.get("clip-path", ""))
+            if ref:
+                rect = svg.find(f".//{{*}}clipPath[@id='{ref[1]}']/{{*}}rect")
+                if rect is not None:
+                    sx = image.width / float(svg.get("width"))
+                    sy = image.height / float(svg.get("height"))
+                    x, y, w, h = (float(rect.get(key)) for key in ("x", "y", "width", "height"))
+                    region = image.crop((int(x*sx), int(y*sy), math.ceil((x+w)*sx), math.ceil((y+h)*sy)))
+                    body_bbox = ImageChops.difference(region, Image.new("RGB", region.size, "white")).getbbox()
+                    if body_bbox:
+                        image, bbox = region, body_bbox
+                break
     left, top, right, bottom = bbox
     left, top = max(0, left - margin), max(0, top - margin)
     right, bottom = min(image.width, right + margin), min(image.height, bottom + margin)
@@ -338,7 +356,7 @@ def extract_table_images_by_id(source, ir, out_dir, table_ids=None):
                 if pymupdf.Pixmap(png).is_unicolor:
                     continue
                 try:
-                    png, cropped = _crop_png(png)
+                    png, cropped = _crop_png(png, page_svg=lambda: document.render_svg(index - 1))
                 except Exception as exc:
                     record["reason"] = f"crop_failed:{type(exc).__name__}:{exc}"
                     prepared_pages = []

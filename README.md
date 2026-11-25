@@ -91,3 +91,11 @@ HWP/HWPX 원본 위치와 PDF 페이지는 서로 다른 좌표계입니다. 변
 
 MCP 도구 `restore_hwp_body(doc_name)`는 등록된 HWP/HWPX의 본문 문단과 중첩 표를 편집 가능한 HWPX로 저장하고 결과 경로를 반환합니다. 원본 XML에서 배치와 자산을 대응할 수 있는 그림은 HWPX에 포함합니다. 같은 그림을 여러 곳에 사용한 경우 각 배치의 위치와 크기를 별도로 처리합니다. 일반 도형과 정확한 쪽 배치는 원본과 렌더를 대조해 확인하세요.
 `table_diff`는 본문 표의 순서와 중첩 위치, 셀 주소, 병합 범위, 셀 텍스트를 비교합니다. `json_to_hwpx`는 파싱 JSON과 복원본을, HWPX 입력의 `source_to_json`은 원본과 JSON을 비교합니다. 바이너리 HWP의 `source_to_json`은 null입니다. 차이 건수와 최대 10개 위치를 반환합니다.
+
+### HWPX table round-trip checks
+
+For a source document, compare the native table records with the restored HWPX at the same nested table and cell addresses. Compare drawing trees separately: matching rows, cells and text alone cannot detect missing arrows. The parser carries self-contained vector anchors for matched table cells and the restorer writes them back as editable HWPX shapes. Text-bearing shapes and groups with binary references are outside this vector path.
+
+A Windows comparison of two nested tables in one Korean government document found that all six vector anchor trees in the flowchart survived reconstruction, ignoring regenerated object IDs. On the full HWPX the table/cell record comparison went from 293 differences to 101 across 76,495 records. The two target table subtrees had no remaining record differences. This measures structure and text; renderer glyph coverage and collisions between inline graphics and captions require inspecting the page images separately.
+
+Run the synthetic regression with `python -m pytest tests/test_vector_anchor_roundtrip_crop.py tests/test_table_images.py`. Only synthetic fixtures belong in version control.
