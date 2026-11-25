@@ -35,6 +35,25 @@ def server_name() -> str:
     return str(d / f"app-{os.getpid()}.sock")
 
 
+def publish_server(address: str) -> Path | None:
+    """Publish the active Windows pipe address in the per-user temp directory."""
+    if sys.platform != "win32":
+        return None
+    d = Path(tempfile.gettempdir()) / "govparse-desktop"
+    d.mkdir(parents=True, exist_ok=True)
+    record = d / f"app-{os.getpid()}.pipe"
+    record.write_text(address, encoding="utf-8")
+    return record
+
+
+def forget_server(record: Path | None) -> None:
+    if record is not None:
+        try:
+            record.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 def request(address: str, line: str, timeout: float = 3.0) -> dict:
     if sys.platform == "win32":
         import time
@@ -101,11 +120,17 @@ def _alive_windows(path: str) -> bool:
 def discover(directory: Path | None = None) -> Found:
     """Count the apps that actually accept a connection. A socket file left by a crashed app does not count."""
     if sys.platform == "win32":
-        try:
-            names = [n for n in os.listdir("\\\\.\\pipe\\") if n.startswith(PIPE_PREFIX)]
-        except OSError:
-            names = []
-        live = [path for n in names if _alive_windows(path := "\\\\.\\pipe\\" + n)]
+        d = Path(directory) if directory else Path(tempfile.gettempdir()) / "govparse-desktop"
+        live = []
+        for record in sorted(d.glob("app-*.pipe")) if d.is_dir() else []:
+            try:
+                path = record.read_text(encoding="utf-8").strip()
+            except OSError:
+                continue
+            if path.startswith("\\\\.\\pipe\\" + PIPE_PREFIX) and _alive_windows(path):
+                live.append(path)
+            else:
+                forget_server(record)
     else:
         d = Path(directory) if directory else socket_dir()
         live = [str(p) for p in sorted(d.glob("app-*.sock"))] if d.is_dir() else []

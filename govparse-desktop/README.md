@@ -6,7 +6,7 @@ The app uses the GovParse MCP engine for document parsing and restoration. The e
 
 ## PySide6 application
 
-Requirements: Python 3.12 or 3.13 and uv.
+Requirements: Python 3.12 and uv. The locked GUI environment currently targets Python 3.12.
 
 From this directory:
 
