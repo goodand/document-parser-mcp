@@ -37,6 +37,8 @@ for name in ('worker.py','manual.html'):
 # app modules used by worker.py (figure review, linkage, HTML captions)
 shutil.rmtree(site/'gpdesk',ignore_errors=True)
 shutil.copytree(base/'gpdesk',site/'gpdesk',ignore=shutil.ignore_patterns('__pycache__','*.pyc'))
+# local override (engine_python / engine_src / ocr_models), read by gpdesk.config from next to the package; not in the repository
+if '--local-config' in sys.argv and (base/'config.json').is_file(): shutil.copy2(base/'config.json',site/'config.json')
 csc=r'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 def compile(file,out,extra):
     files=[file] if isinstance(file,str) else list(file)

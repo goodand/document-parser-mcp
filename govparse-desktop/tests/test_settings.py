@@ -85,8 +85,8 @@ def test_worker_ocr_goes_through_engine_choice(monkeypatch, tmp_path):
 
     monkeypatch.setattr(settings, "settings_path", lambda: tmp_path / "settings.json")
     seen = {}
-    monkeypatch.setattr(ocr_engines, "run", lambda png: seen.setdefault("png", png) and {"status": "ok", "texts": ["x"], "engine": "rapidocr"})
+    monkeypatch.setattr(ocr_engines, "run", lambda png, **kw: seen.setdefault("png", png) and {"status": "ok", "texts": ["x"], "engine": "rapidocr"})
     png = tmp_path / "a.png"
     pymupdf.open().new_page(width=50, height=20).get_pixmap().save(str(png))
     r = dw.ocr(png)
-    assert r["engine"] == "rapidocr" and seen["png"] != png  # the padded copy is what gets read
+    assert r["engine"] == "rapidocr" and seen["png"] == png  # RapidOCR: the engine preprocesses, so it gets the original

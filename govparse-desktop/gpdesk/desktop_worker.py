@@ -453,15 +453,26 @@ def pad_for_ocr(image: Path, out_dir: Path) -> Path:
 
 
 def ocr(png: Path) -> dict:
-    """OCR one picture with the engine chosen in Settings (after the size/margin preprocessing)."""
-    from . import ocr_engines
+    """OCR one picture with the engine chosen in Settings.
 
+    RapidOCR: the engine's shared function shrinks, pads and maps boxes back once, so it gets the
+    original file. An older engine without that function answers needs_preprocess; then, and for
+    Windows OCR, the picture is shrunk and padded here first.
+    """
+    from . import ocr_engines, settings
+
+    png = Path(png)
+    by_engine = settings.load()["ocr_engine"] == "rapidocr"
+    if by_engine:
+        res = ocr_engines.run(png)
+        if res.get("status") != "needs_preprocess":
+            return res
     work = Path(tempfile.mkdtemp(prefix="gpocr-"))
     try:
-        png = pad_for_ocr(Path(png), work / "pad")
+        png = pad_for_ocr(png, work / "pad")
     except Exception:  # noqa: BLE001 - unreadable by PyMuPDF: let the OCR engine try the original
         pass
-    return ocr_engines.run(png)
+    return ocr_engines.run(png, legacy=True) if by_engine else ocr_engines.run(png)
 
 
 def _dispatch(argv: list[str]):

@@ -238,3 +238,55 @@ def test_ocr_reads_large_logo_text(tmp_path):
     png = tmp_path / "logo.png"
     page.get_pixmap(dpi=144).save(str(png))  # 2160 x 480, text close to the size of the real logo
     assert "중소벤처기업부" in "".join(dw.ocr(png)["texts"]).replace(" ", "")
+
+
+def _fake_engine(monkeypatch, engine, results):
+    """dw.ocr with the chosen engine and a recorded runner; results are returned call by call."""
+    from gpdesk import ocr_engines, settings
+
+    calls = []
+    monkeypatch.setattr(settings, "load", lambda: {"ocr_engine": engine})
+    monkeypatch.setattr(ocr_engines, "is_available", lambda e: (True, ""))
+
+    def runner(png, **kw):
+        calls.append((Path(png), kw))
+        return dict(results[min(len(calls), len(results)) - 1])
+
+    monkeypatch.setitem(ocr_engines.RUNNERS, engine, runner)
+    return calls
+
+
+def _white_png(path, w=300, h=120):
+    import pymupdf
+
+    doc = pymupdf.open()
+    doc.new_page(width=w, height=h).get_pixmap(alpha=False).save(str(path))
+    return path
+
+
+def test_rapidocr_gets_the_original_picture(tmp_path, monkeypatch):
+    """The engine shrinks and pads once (recognize_image); the GUI must not preprocess first."""
+    png = _white_png(tmp_path / "a.png")
+    calls = _fake_engine(monkeypatch, "rapidocr", [{"status": "ok", "texts": ["가"], "error": "", "preprocess": "engine"}])
+    res = dw.ocr(png)
+    assert [c[0] for c in calls] == [png] and res["status"] == "ok" and res["preprocess"] == "engine"
+
+
+def test_rapidocr_old_engine_falls_back_to_gui_preprocessing(tmp_path, monkeypatch):
+    """An engine without the shared OCR function answers needs_preprocess; then the GUI pads as before."""
+    png = _white_png(tmp_path / "a.png")
+    calls = _fake_engine(monkeypatch, "rapidocr", [{"status": "needs_preprocess", "texts": [], "error": ""},
+                                                   {"status": "ok", "texts": ["가"], "error": "", "preprocess": "gui"}])
+    res = dw.ocr(png)
+    assert len(calls) == 2 and calls[1][0] != png and calls[1][1] == {"legacy": True}
+    assert res["status"] == "ok" and res["preprocess"] == "gui"
+
+
+def test_windows_ocr_keeps_gui_preprocessing(tmp_path, monkeypatch):
+    import pymupdf
+
+    png = _white_png(tmp_path / "a.png")
+    calls = _fake_engine(monkeypatch, "windows", [{"status": "empty", "texts": [], "error": ""}])
+    dw.ocr(png)
+    assert len(calls) == 1 and calls[0][0] != png
+    assert pymupdf.Pixmap(str(calls[0][0])).width == 300 + 2 * dw.OCR_PAD

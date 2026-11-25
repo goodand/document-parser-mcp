@@ -62,14 +62,18 @@ def list_engines() -> list[dict]:
     return out
 
 
-def _run_rapidocr(png: Path) -> dict:
+def _run_rapidocr(png: Path, legacy: bool = False) -> dict:
+    """legacy=True: the picture is already shrunk and padded by the GUI (engine without recognize_image)."""
     from . import runner
     from .config import load as load_config
 
     cfg = load_config()
     out = Path(tempfile.mkdtemp(prefix="gpocr-")) / "r.json"
-    r = runner.run([str(cfg.engine_python), str(HERE / "ocr_tool.py"), str(cfg.ocr_models), str(out), str(png)],
-                   timeout=180, env=dict(os.environ, PYTHONUTF8="1"))
+    env = dict(os.environ, PYTHONUTF8="1")
+    if cfg.engine_src.is_dir():  # a pinned engine source wins over the copy installed in the engine interpreter
+        env["PYTHONPATH"] = str(cfg.engine_src)
+    r = runner.run([str(cfg.engine_python), str(HERE / "ocr_tool.py"), str(cfg.ocr_models), str(out),
+                    *(["--legacy"] if legacy else []), str(png)], timeout=180, env=env)
     if not out.exists():
         return {"status": "failed", "texts": [], "error": (r.stderr or "결과 없음")[-300:]}
     return json.loads(out.read_text("utf-8")).get(Path(png).name, {"status": "failed", "texts": []})
@@ -92,7 +96,7 @@ def _run_windows(png: Path) -> dict:
 RUNNERS = {"rapidocr": _run_rapidocr, "windows": _run_windows}
 
 
-def run(png: Path) -> dict:
+def run(png: Path, **kw) -> dict:
     """OCR one picture with the engine chosen in Settings; the result names the engine."""
     engine = settings.load()["ocr_engine"]
     label = next(e["label"] for e in ENGINES if e["id"] == engine)
@@ -100,4 +104,4 @@ def run(png: Path) -> dict:
     if not ok:
         return {"status": "not_available", "texts": [], "error": f"{label}: {why}", "engine": engine,
                 "engine_label": label}
-    return {**RUNNERS[engine](png), "engine": engine, "engine_label": label}
+    return {**RUNNERS[engine](png, **kw), "engine": engine, "engine_label": label}
