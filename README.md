@@ -43,6 +43,8 @@ OCR 모델·한컴오피스·JDK 바이너리·문서 코퍼스는 이 저장소
 4. HWP는 `convert_hwp` 후 `get_best_available(doc_name, output_kind="structure")`를 기본으로 사용합니다. `tables`와 기본 `rag`도 C3 조합을 실행합니다. HWPX 원본 구조는 `parse_hwp_source`, PDF 구조는 `parse_document`를 사용합니다.
 5. `get_tables`, `get_visual_evidence`, `get_hwp_element`, `search_hwp_source`로 근거를 조회하고, 필요한 경우 RAG JSONL을 내보냅니다.
 
+`extract_hwp_table_images(doc_name, list_only=true)`는 렌더하지 않고 중첩 표를 포함한 모든 표 ID를 연결 IR JSON에 표시합니다. 그다음 전체 렌더 또는 선택한 ID의 렌더를 호출할 수 있습니다. 표별 원본 구조와 셀 텍스트가 정확히 대응하는 경우에만 이미지를 만들며, 결과는 요약과 manifest·IR 경로로 반환합니다. manifest에는 이미지 경로·SHA-256, 생성 방식 및 표별 실패 사유가 포함되고, 상대 이미지 경로는 `image_dir`를 기준으로 해석합니다. 출력 경로는 원본 SHA-256과 실행별 ID를 포함해 이전 실행의 파일과 섞이지 않습니다. 32MiB보다 큰 HWPX 섹션은 표 캡처용 전용 IR로 읽으며, 전체 문서 IR인 `document.json`과 구분해 응답합니다.
+
 `get_best_available`은 출력 목적에 맞는 경로를 안내·실행합니다. `recover_pdf_table_text`의 OCR 결과와 `diagnose_hwp_pdf_tables`의 표 위험 진단은 검토 후보이며 의미적 정확성이나 원문과의 대응을 자동 승인하지 않습니다.
 
 HWP/HWPX 원본 위치와 PDF 페이지는 서로 다른 좌표계입니다. 변환 계보·해시를 유지하며, 그림·표 제목·단위·각주·이어짐의 대응이 입증되지 않으면 판단을 보류합니다. 정부 예산서에서 얻은 기존 수치를 모든 문서의 정확도로 일반화하지 않습니다. [C3 검토 방법 Skill](skills/c3-hwp-parsing/SKILL.md)을 HWP 기본 검토 절차로 사용합니다.

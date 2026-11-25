@@ -692,6 +692,209 @@ def parse_hwp_source(doc_name: str) -> str:
 
 
 @mcp.tool()
+def extract_hwp_table_images(
+    doc_name: str, table_ids: list[str] | None = None, list_only: bool = False
+) -> str:
+    """HWP/HWPX의 각 표를 원본 표와 대조한 뒤 개별 PNG로 렌더한다.
+
+    list_only=true로 표 식별자와 IR 경로만 빠르게 조회할 수 있다. 반환된
+    table_ids를 다음 호출에 넘기면 선택한 표만 렌더한다. 기본은 전체 표다.
+    응답은 간결한 요약이며 상세 표별 상태는 manifest와 ID를 표시한 IR JSON에 있다.
+    원본 XML과 IR의 표 구조 및 셀 텍스트가 맞지 않으면 이미지를 만들지 않고
+    실패 사유를 남긴다.
+
+    Args:
+        doc_name: 등록된 HWP/HWPX 파일명
+        table_ids: 선택적 안정 표 식별자 목록. None이면 모든 표를 처리한다.
+        list_only: true이면 이미지를 만들지 않고 ID manifest와 연결 IR만 쓴다.
+    """
+    if not isinstance(doc_name, str) or _safe_doc_name(doc_name) is None:
+        return json.dumps({"status": "error", "error": "문서 이름에 경로가 들어갈 수 없습니다."},
+                          ensure_ascii=False)
+    if not isinstance(doc_name, str) or Path(doc_name).suffix.lower() not in {".hwp", ".hwpx"}:
+        return json.dumps({"status": "error", "error": "HWP 또는 HWPX 파일을 지정하세요."},
+                          ensure_ascii=False)
+    if table_ids is not None and (
+        not isinstance(table_ids, list)
+        or any(not isinstance(table_id, str) or not table_id for table_id in table_ids)
+    ):
+        return json.dumps({"status": "error", "error": "table_ids는 비어 있지 않은 문자열 목록이어야 합니다."},
+                          ensure_ascii=False)
+    if type(list_only) is not bool:
+        return json.dumps({"status": "error", "error": "list_only는 true 또는 false여야 합니다."},
+                          ensure_ascii=False)
+
+    from .hwp_source import extract_source
+    from .normalize import sha256_of
+
+    src, sidecar = _hwp_source_paths(doc_name)
+    try:
+        source_hash = sha256_of(src)
+        fallback = False
+        if src.suffix.lower() == ".hwpx":
+            from zipfile import ZipFile
+
+            with ZipFile(src) as package:
+                oversized_sections = [
+                    item for item in package.infolist()
+                    if re.fullmatch(r"Contents/section\d+\.xml", item.filename)
+                    and item.file_size > 32 * 1024 * 1024
+                ]
+            fallback = bool(oversized_sections)
+        if fallback:
+            from .large_hwpx import build_table_ir
+
+            ir = build_table_ir(src)
+            ir_dir = sidecar / "table_image_ir" / source_hash[:24]
+            ir_dir.mkdir(parents=True, exist_ok=True)
+            ir_path = ir_dir / "document.json"
+            if not ir_path.is_file():
+                temporary = ir_path.with_name(f".{uuid.uuid4().hex}.document.json.tmp")
+                temporary.write_text(json.dumps(ir, ensure_ascii=False), encoding="utf-8")
+                temporary.replace(ir_path)
+            ir_kind = "large_hwpx_table_fallback"
+        else:
+            source_manifest = extract_source(src, sidecar)
+            source_hash = source_manifest["source_sha256"]
+            ir_path = sidecar / "document.json"
+            ir = json.loads(ir_path.read_text(encoding="utf-8"))
+            ir_kind = "rhwp"
+        if sha256_of(src) != source_hash:
+            raise ValueError("원본 파일이 표 이미지 추출 중 변경되었습니다.")
+        from .table_images import extract_table_images_by_id, iter_table_nodes
+
+        run_id = uuid.uuid4().hex
+        output_dir = _corpus_dir() / "06table" / source_hash[:24] / run_id
+        output_dir.mkdir(parents=True, exist_ok=True)
+        table_nodes = list(iter_table_nodes(ir))
+        known_ids = {table_id for table_id, _ in table_nodes}
+        # Build RFC 6901 pointers without copying the IR (some source documents
+        # produce hundreds of megabytes of JSON). The loaded IR is request-local.
+        node_ids = {id(node): table_id for table_id, node in table_nodes}
+        table_pointers = {}
+        def walk_json(value, pointer=""):
+            table_id = node_ids.get(id(value)) if isinstance(value, dict) else None
+            if table_id is not None:
+                table_pointers[table_id] = pointer or "/"
+            if isinstance(value, dict):
+                for key, child in value.items():
+                    escaped = str(key).replace("~", "~0").replace("/", "~1")
+                    walk_json(child, f"{pointer}/{escaped}")
+            elif isinstance(value, list):
+                for index, child in enumerate(value):
+                    walk_json(child, f"{pointer}/{index}")
+        walk_json(ir)
+        requested_ids = set(table_ids) if table_ids is not None else None
+        selected_ids = known_ids if requested_ids is None else requested_ids
+        if list_only:
+            table_records = {
+                table_id: {
+                    "status": "not_requested",
+                    "method": None,
+                    "path": None,
+                    "paths": [],
+                    "sha256": None,
+                    "page_hint": None,
+                    "reason": "list_only",
+                    "ir_pointer": table_pointers.get(table_id),
+                }
+                for table_id in sorted(known_ids)
+            }
+            result = {
+                "method_contract": "not_run",
+                "source_sha256": source_hash,
+                "ir_json": str(ir_path),
+                "table_id_scheme": "s<section_idx>/b<body_index>/t<root_ordinal>/c<row>_<col>/t<nested_ordinal>",
+                "asset_paths_relative_to": str(output_dir),
+                "table_count": len(known_ids),
+                "rendered_count": 0,
+                "tables": table_records,
+            }
+            manifest_tmp = output_dir / f".manifest.{uuid.uuid4().hex}.tmp"
+            manifest_tmp.write_text(
+                json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            manifest_tmp.replace(output_dir / "manifest.json")
+        else:
+            result = extract_table_images_by_id(
+                src,
+                ir,
+                output_dir,
+                table_ids=selected_ids,
+            )
+            table_records = result.get("tables", {})
+            result.update({
+                "source_sha256": source_hash,
+                "ir_json": str(ir_path),
+                "table_id_scheme": "s<section_idx>/b<body_index>/t<root_ordinal>/c<row>_<col>/t<nested_ordinal>",
+                "asset_paths_relative_to": str(output_dir),
+            })
+            for table_id, record in table_records.items():
+                if table_id in table_pointers:
+                    record["ir_pointer"] = table_pointers[table_id]
+            manifest_tmp = output_dir / f".manifest.{uuid.uuid4().hex}.tmp"
+            manifest_tmp.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+            manifest_tmp.replace(output_dir / "manifest.json")
+        returned_ids = set(table_records)
+        unknown_ids = sorted(
+            table_id for table_id in (requested_ids or set())
+            if table_id not in known_ids
+        )
+        for table_id, table in iter_table_nodes(ir):
+            table["table_id"] = table_id
+            table["table_image"] = table_records.get(table_id, {
+                "status": "not_requested",
+                "method": None,
+                "path": None,
+                "paths": [],
+                "sha256": None,
+                "page_hint": None,
+                "reason": "not_requested",
+            })
+        enriched_ir_path = output_dir / "table_images_ir.json"
+        enriched_tmp = output_dir / f".table_images_ir.{uuid.uuid4().hex}.tmp"
+        enriched_tmp.write_text(json.dumps(ir, ensure_ascii=False), encoding="utf-8")
+        enriched_tmp.replace(enriched_ir_path)
+        selected_count = len(selected_ids)
+        rendered_count = int(result.get("rendered_count", 0))
+        failed_count = 0 if list_only else sum(
+            table_records[table_id].get("status") != "rendered"
+            for table_id in returned_ids & known_ids
+        )
+        status = "listed" if list_only else (
+            "empty" if not selected_count and not unknown_ids else (
+                "ok" if rendered_count == selected_count and not unknown_ids else "partial"
+            )
+        )
+        manifest_path = output_dir / "manifest.json"
+        return json.dumps({
+            "status": status,
+            "document": doc_name,
+            "source_ir_json": str(ir_path),
+            "table_images_ir_json": str(enriched_ir_path),
+            "ir_kind": ir_kind,
+            "source_sha256": source_hash,
+            "run_id": run_id,
+            "image_dir": str(output_dir),
+            "manifest_path": str(manifest_path),
+            "manifest_asset_paths_relative_to": str(output_dir),
+            "table_id_scheme": "s<section_idx>/b<body_index>/t<root_ordinal>/c<row>_<col>/t<nested_ordinal>",
+            "table_count": len(known_ids),
+            "selected_table_count": selected_count,
+            "rendered_count": rendered_count,
+            "failed_count": failed_count,
+            "unknown_table_ids": unknown_ids[:20],
+            "unknown_table_id_count": len(unknown_ids),
+        }, ensure_ascii=False)
+    except Exception as exc:
+        return json.dumps({
+            "status": "error",
+            "document": doc_name,
+            "error": f"{type(exc).__name__}: {exc}",
+        }, ensure_ascii=False)
+
+
+@mcp.tool()
 def restore_hwp_body(doc_name: str) -> str:
     """등록된 HWP/HWPX의 본문 문단과 중첩 표를 편집 가능한 HWPX로 복원한다.
 

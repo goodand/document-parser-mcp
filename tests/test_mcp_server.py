@@ -222,6 +222,8 @@ def test_all_tools_registered():
         "parse_document",
         "get_tables",
         "extract_table_images",
+        "extract_hwp_table_images",
+        "ocr_image",
         "export_rag_chunks",
         "restore_hwp_body",
         "parse_hwp_source",
