@@ -1,0 +1,5 @@
+Vendored from goodand/document-parser-mcp, commit ea53268.
+sha256:
+894b859618f08743eeed39b22e13aa5200362d86f890bcbcb33e36ff351799cb *hwp_restore.py
+4b35ca62687c42f3c5c318db27dfabd5a0f387cae6f4601a9d76191f86bcf48a *blank_table.hwpx
+Resync deliberately: run tests/test_engine_drift.py against the engine working tree first.

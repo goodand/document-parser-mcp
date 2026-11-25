@@ -1,0 +1,171 @@
+import json
+import shutil
+import zipfile
+from pathlib import Path
+
+import pytest
+
+from gpdesk import desktop_worker as dw
+
+FIX = Path(__file__).resolve().parents[1] / "samples" / "synthetic-figures.hwpx"
+
+
+@pytest.fixture
+def src(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "appdata"))
+    p = tmp_path / "in" / "doc.hwpx"
+    p.parent.mkdir()
+    shutil.copy2(FIX, p)
+    return p
+
+
+@pytest.mark.parametrize("force_xml", [False, True])
+def test_html_export_both_ir_routes(src, tmp_path, monkeypatch, force_xml):
+    if force_xml:
+        monkeypatch.setenv("GPDESK_FORCE_OWPML", "1")
+    out = tmp_path / "o"
+    out.mkdir()
+    rep = dw.run("html", src, out, ocr=False)
+    html = (out / "document.html").read_text("utf-8")
+    assert html.count("<img") == 6 and "&lt;그림 A&gt; 사업 구성도" in html
+    assert rep["ir_builder"] == ("gpdesk.owpml_ir" if force_xml else "rhwp")
+    assert rep["figures"]["matched"] == 6
+
+
+def test_hwpx_export_has_pictures_and_report(src, tmp_path):
+    out = tmp_path / "o"
+    out.mkdir()
+    rep = dw.run("hwpx", src, out)
+    hwpx = out / "document.hwpx"
+    with zipfile.ZipFile(hwpx) as z:
+        assert sum(1 for n in z.namelist() if n.startswith("BinData/")) == 4
+    assert rep["verify"]["ok"] and (out / "document.links.json").exists()
+    assert any("쪽 배치" in n for n in rep["notes"])
+    assert json.loads((out / "report.json").read_text("utf-8"))["saved"] is True
+
+
+def test_convert_from_existing_json(src, tmp_path):
+    first = tmp_path / "j"
+    first.mkdir()
+    dw.run("json", src, first, ocr=False)
+    for fmt in ("html", "hwpx"):
+        out = tmp_path / f"c-{fmt}"
+        out.mkdir()
+        rep = dw.convert(first / "document.json", out, fmt)
+        assert rep["saved"]
+    html = (tmp_path / "c-html" / "document.html").read_text("utf-8")
+    assert html.count("<img") == 6
+    assert all((tmp_path / "c-html" / s).is_file() for s in dw.img_srcs(html))
+    with zipfile.ZipFile(tmp_path / "c-hwpx" / "document.hwpx") as z:
+        assert sum(1 for n in z.namelist() if n.startswith("BinData/")) == 4
+
+
+def test_convert_rejects_unknown_json(tmp_path):
+    bad = tmp_path / "x.json"
+    bad.write_text('{"hello": 1}', "utf-8")
+    with pytest.raises(ValueError):
+        dw.convert(bad, tmp_path, "html")
+
+
+def test_preview_page_count_and_renderer(src, tmp_path):
+    png = tmp_path / "p.png"
+    count, renderer = dw.preview(src, png, 0)
+    assert count == 1 and renderer == "rhwp" and png.read_bytes()[:4] == b"\x89PNG"
+
+
+@pytest.mark.live
+def test_preview_falls_back_to_hancom(src, tmp_path, monkeypatch):
+    monkeypatch.setenv("GPDESK_FORCE_OWPML", "1")
+    png = tmp_path / "p.png"
+    count, renderer = dw.preview(src, png, 0)
+    assert count == 1 and renderer == "hancom-pdf" and png.read_bytes()[:4] == b"\x89PNG"
+
+
+@pytest.mark.live
+def test_hwp_export_real_ole(src, tmp_path):
+    out = tmp_path / "o"
+    out.mkdir()
+    rep = dw.run("hwp", src, out)
+    assert (out / "document.hwp").read_bytes()[:4] == b"\xd0\xcf\x11\xe0" and rep["reopened"] is True
+
+
+@pytest.mark.live
+def test_ocr_single_image(tmp_path):
+    from samples_text import text_png
+
+    png = tmp_path / "t.png"
+    png.write_bytes(text_png("사업 구성도 2026"))
+    res = dw.ocr(png)
+    assert res["status"] in ("ok", "empty") and isinstance(res["texts"], list)
+    assert res["status"] == "ok" and any("2026" in t for t in res["texts"])
+
+
+def test_index_lists_assets_with_origin_and_caption(src, tmp_path):
+    out = tmp_path / "j"
+    out.mkdir()
+    dw.run("json", src, out, ocr=False)
+    idx = dw.index(out / "document.json")
+    emb = [a for a in idx["assets"] if a["origin"] == "embedded_picture"]
+    cap = [a for a in idx["assets"] if a["origin"] == "rendered_table_capture"]
+    assert len(emb) == 4 and cap and all(Path(a["file"]).is_file() for a in idx["assets"])
+    assert any("사업 구성도" in a["text"] for a in emb)
+    assert all(a["page"] for a in cap) and idx["convertible"] is True
+
+
+def test_pad_for_ocr_adds_white_margin(tmp_path):
+    import pymupdf
+    import zipfile
+
+    raw = zipfile.ZipFile(FIX).read("BinData/image4.png")
+    src = tmp_path / "image4.png"
+    src.write_bytes(raw)
+    out = dw.pad_for_ocr(src, tmp_path / "pad")
+    a, b = pymupdf.Pixmap(str(src)), pymupdf.Pixmap(str(out))
+    assert out.name == src.name and out != src
+    assert b.width == a.width + 2 * dw.OCR_PAD and b.height == a.height + 2 * dw.OCR_PAD
+    assert tuple(b.pixel(2, 2)[:3]) == (255, 255, 255)
+    assert src.read_bytes() == raw  # original untouched
+
+
+@pytest.mark.live
+def test_ocr_reads_text_touching_the_border(tmp_path):
+    """Measured 2026-11-25: without padding the engine returned 사업/체/2026/거 for this picture."""
+    import zipfile
+
+    png = tmp_path / "image4.png"
+    png.write_bytes(zipfile.ZipFile(FIX).read("BinData/image4.png"))
+    joined = "".join(dw.ocr(png)["texts"]).replace(" ", "")
+    assert "사업" in joined and "추진" in joined and "체계" in joined and "2026" in joined
+
+
+def test_result_manifest_detects_changed_files(src, tmp_path):
+    """Pattern from govparse parsed_store.py: published files carry sha256 and are re-verified on load."""
+    out = tmp_path / "j"
+    out.mkdir()
+    rep = dw.run("json", src, out, ocr=False)
+    assert rep["files"] and all(len(f["sha256"]) == 64 for f in rep["files"])
+    assert dw.index(out / "document.json")["integrity"] == {"checked": len(rep["files"]), "changed": [], "missing": []}
+    victim = next(out.glob("assets/embedded/*"))
+    victim.write_bytes(b"tampered")
+    integ = dw.index(out / "document.json")["integrity"]
+    assert integ["changed"] == [victim.relative_to(out).as_posix()]
+    victim.unlink()
+    assert dw.index(out / "document.json")["missing"] or dw.index(out / "document.json")["integrity"]["missing"]
+
+
+def test_index_without_manifest_says_unverified(tmp_path):
+    (tmp_path / "document.json").write_text('{"body": []}', "utf-8")
+    assert dw.index(tmp_path / "document.json")["integrity"] is None
+
+
+def test_summary_counts_structure(src):
+    s = dw.summary(src)
+    assert s["builder"] == "rhwp" and s["pictures"] == 6 and s["tables"] == 3 and s["nested_tables"] == 1  # inner table in the merged cell; the frame table is in the body
+    assert s["paragraphs"] > 0 and s["seconds"] >= 0 and s["source_sha256"]
+
+
+def test_summary_large_route(src, monkeypatch):
+    monkeypatch.setenv("GPDESK_FORCE_OWPML", "1")
+    s = dw.summary(src)
+    assert s["builder"] == "gpdesk.owpml_ir" and s["pictures"] == 6 and s["nested_tables"] == 1
+    assert "미리보기" in s["preview_note"]

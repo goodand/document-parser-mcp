@@ -4,6 +4,10 @@ HWP·HWPX·PDF를 텍스트·문단·표·셀·시각 근거로 구조화하는 
 
 Python 패키지와 실행 명령은 호환성을 위해 `govparse`, `govparse-mcp`를 유지합니다. 현재 버전은 `0.2.0`입니다. 작성자: `chatgpt_gpt6`(제품 연결·검증 기록). 재사용한 실험 코드의 출처는 `provenance/c3-source-reuse.json`에 기록했습니다.
 
+## 데스크톱 앱
+
+Windows x64용 [GovParse Desktop](govparse-desktop/README.md)은 HWP/HWPX 문서를 미리 보고 그림을 검토하거나 HWPX로 내보낼 때 사용합니다. 앱 소스·빌드 안내·합성 테스트 문서는 `govparse-desktop/`에, MCP 서버는 `src/govparse/`에 있습니다.
+
 ## 설치
 
 Python 3.12 또는 3.13과 uv를 준비합니다. 저장소에서:

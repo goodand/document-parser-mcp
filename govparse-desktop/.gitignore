@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+evidence/
+config.json
+!samples/synthetic-35tables.hwpx
+!samples/synthetic-merged.hwpx
+!samples/synthetic-figures.hwpx
+!gpdesk/vendor/blank_table.hwpx
