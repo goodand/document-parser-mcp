@@ -1145,6 +1145,34 @@ def get_visual_evidence(
 
 
 @mcp.tool()
+def ocr_image(image_path: str, raw: bool = False, padding_px: int = 60) -> str:
+    """이미지 파일을 로컬 RapidOCR로 읽어 텍스트 후보와 원본 좌표를 반환한다.
+
+    기본은 흰 여백을 추가해 글자 가장자리 검출을 돕는다. raw=true를 주면
+    원본 픽셀 그대로 읽는다. 결과 좌표는 항상 여백 적용 전 이미지 기준이다.
+    OCR 결과는 검토 후보이며 원본 문서나 DB를 수정하지 않는다.
+
+    Args:
+        image_path: 로컬 이미지 파일의 경로
+        raw: true이면 여백 없이 원본 이미지를 읽음
+        padding_px: 기본 60px 흰 여백의 크기 (0~256)
+    """
+    from .image_ocr import recognize_image_json
+
+    try:
+        return recognize_image_json(image_path, raw=raw, padding_px=padding_px)
+    except ImportError as exc:
+        return json.dumps({
+            "status": "unavailable",
+            "error": "로컬 OCR 선택 의존성이 없습니다. govparse[table-ocr] 설치를 확인하세요.",
+            "detail": str(exc),
+        }, ensure_ascii=False)
+    except (OSError, TypeError, ValueError, RuntimeError, KeyError) as exc:
+        return json.dumps({"status": "error", "error": f"{type(exc).__name__}: {exc}"},
+                          ensure_ascii=False)
+
+
+@mcp.tool()
 def recover_pdf_table_text(
     doc_name: str, page: int, table_index: int = 0, dpi: int = 190
 ) -> str:
