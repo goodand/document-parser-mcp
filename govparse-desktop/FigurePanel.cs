@@ -130,7 +130,7 @@ class FigurePanel : Panel {
     void ClearEditor() { captionBox.Text = ""; pending = "typed"; ocr.Show(); }
 
     static AxButton Btn(string text, EventHandler h) { var b = new AxButton(text, AxKind.Secondary); b.Click += h; return b; }
-    public void Reset() { source = null; generation++; Current = null; CurrentPage = -1; links.Clear(); list.Items.Clear(); detail.Text = ""; picks.Items.Clear(); summary.Text = ""; ClearEditor(); }
+    public void Reset() { DocumentHash = null; source = null; generation++; Current = null; CurrentPage = -1; links.Clear(); list.Items.Clear(); detail.Text = ""; picks.Items.Clear(); summary.Text = ""; ClearEditor(); }
 
     // ---------------------------------------------------------------- worker session
     string Call(string line) {
@@ -164,6 +164,7 @@ class FigurePanel : Panel {
             if (!(bool)reply["ok"]) { status.Text = "실패 · " + reply["error"]; status.ForeColor = Warn; return; }
             var data = json.Deserialize<Dictionary<string, object>>(File.ReadAllText((string)reply["file"], Encoding.UTF8));
             if (gen != generation) return; // a newer document was opened meanwhile
+            DocumentHash = (string)data["source_sha256"];
             links = ((ArrayList)data["links"]).Cast<Dictionary<string, object>>().ToList();
             var s = (Dictionary<string, object>)data["summary"];
             int total = (int)s["total"], known = (int)s["auto_explicit"] + (int)s["user_confirmed"], located = total - (int)s["location_unverified"];
@@ -175,7 +176,7 @@ class FigurePanel : Panel {
     }
 
     public async Task Open(string path) {
-        source = path; generation++; Current = null; CurrentPage = -1; links.Clear(); list.Items.Clear(); detail.Text = ""; picks.Items.Clear(); ClearEditor();
+        DocumentHash = null; source = path; generation++; Current = null; CurrentPage = -1; links.Clear(); list.Items.Clear(); detail.Text = ""; picks.Items.Clear(); ClearEditor();
         summary.Text = path.ToLowerInvariant().EndsWith(".hwpx") ? "그림 위치와 설명 후보를 읽는 중…" : "HWP는 한컴으로 HWPX 변환본을 만든 뒤 구조를 읽습니다. 잠시 걸립니다…";
         string outDir = Path.Combine(Path.GetTempPath(), "GovParseFigures", Guid.NewGuid().ToString("N").Substring(0, 8));
         await Send(new { cmd = "open", src = path, @out = outDir });
@@ -203,6 +204,19 @@ class FigurePanel : Panel {
     public void Shutdown() { try { if (proc != null && !proc.HasExited) proc.Kill(); } catch { } }
 
     // ---------------------------------------------------------------- list
+    public string DocumentHash { get; private set; }
+    public string SelectedId {
+        get { return list.SelectedItems.Count == 1 ? OccId((Dictionary<string, object>)list.SelectedItems[0].Tag) : null; }
+    }
+    public string SelectVerified(string id) {
+        var row = list.Items.Cast<ListViewItem>().FirstOrDefault(i => OccId((Dictionary<string, object>)i.Tag) == id);
+        if (row == null) return "item_missing_or_filtered";
+        var link = (Dictionary<string, object>)row.Tag;
+        if (!(bool)((Dictionary<string, object>)link["location"])["verified"]) return "location_unverified";
+        list.SelectedItems.Clear();
+        row.Selected = true; row.EnsureVisible();
+        return "selected";
+    }
     static string OccId(Dictionary<string, object> l) { return (string)((Dictionary<string, object>)l["occurrence"])["occ_id"]; }
     static string Status(string s) {
         switch (s) {

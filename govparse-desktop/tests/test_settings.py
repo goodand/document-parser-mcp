@@ -90,3 +90,44 @@ def test_worker_ocr_goes_through_engine_choice(monkeypatch, tmp_path):
     pymupdf.open().new_page(width=50, height=20).get_pixmap().save(str(png))
     r = dw.ocr(png)
     assert r["engine"] == "rapidocr" and seen["png"] == png  # RapidOCR: the engine preprocesses, so it gets the original
+
+
+def test_rapidocr_runs_from_the_app_when_bundled(monkeypatch, tmp_path):
+    """Another PC has no govparse engine: the copy shipped inside the app must be used, not looked up."""
+    import sys
+
+    models = tmp_path / "models" / "rapidocr"
+    models.mkdir(parents=True)
+    monkeypatch.setattr(ocr_engines, "bundled_models", lambda: models)
+    monkeypatch.setattr(ocr_engines, "_bundled_code", lambda: True)
+
+    def no_engine():
+        raise RuntimeError("no engine on this PC")
+
+    monkeypatch.setattr("gpdesk.config.load", no_engine)
+    python, model_dir, env = ocr_engines.rapidocr_runtime()
+    assert Path(python) == Path(sys.executable) and model_dir == models and "PYTHONPATH" not in env
+    assert ocr_engines.is_available("rapidocr") == (True, "")
+
+
+def test_rapidocr_uses_the_installed_engine_when_not_bundled(monkeypatch, tmp_path):
+    from gpdesk.config import EngineConfig
+
+    monkeypatch.setattr(ocr_engines, "bundled_models", lambda: None)
+    src = tmp_path / "src"
+    src.mkdir()
+    cfg = EngineConfig(tmp_path / "python.exe", src, tmp_path / "m", tmp_path / "d")
+    monkeypatch.setattr("gpdesk.config.load", lambda: cfg)
+    python, model_dir, env = ocr_engines.rapidocr_runtime()
+    assert Path(python) == cfg.engine_python and model_dir == cfg.ocr_models and env["PYTHONPATH"] == str(src)
+
+
+def test_rapidocr_unavailable_without_bundle_and_engine(monkeypatch):
+    monkeypatch.setattr(ocr_engines, "bundled_models", lambda: None)
+
+    def no_engine():
+        raise RuntimeError("no engine on this PC")
+
+    monkeypatch.setattr("gpdesk.config.load", no_engine)
+    ok, why = ocr_engines.is_available("rapidocr")
+    assert ok is False and why

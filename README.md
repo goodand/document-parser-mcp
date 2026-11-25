@@ -6,7 +6,7 @@ Python 패키지와 실행 명령은 호환성을 위해 `govparse`, `govparse-m
 
 ## 데스크톱 앱
 
-Windows x64용 [GovParse Desktop](govparse-desktop/README.md)은 HWP/HWPX 문서를 미리 보고 그림을 검토하거나 HWPX로 내보낼 때 사용합니다. 앱 소스·빌드 안내·합성 테스트 문서는 `govparse-desktop/`에, MCP 서버는 `src/govparse/`에 있습니다.
+[GovParse Desktop](govparse-desktop/README.md)에서 HWP/HWPX 문서를 미리 보고 그림을 검토하거나 HWPX로 내보낼 수 있습니다. 기존 Windows x64 앱과 PySide6 미리보기 버전의 소스가 함께 있습니다. PySide6 화면 테스트는 Windows에서 실행했고 macOS 실기 검증은 남아 있습니다.
 
 ## 설치
 
@@ -91,3 +91,11 @@ HWP/HWPX 원본 위치와 PDF 페이지는 서로 다른 좌표계입니다. 변
 
 MCP 도구 `restore_hwp_body(doc_name)`는 등록된 HWP/HWPX의 본문 문단과 중첩 표를 편집 가능한 HWPX로 저장하고 결과 경로를 반환합니다. 원본 XML에서 배치와 자산을 대응할 수 있는 그림은 HWPX에 포함합니다. 같은 그림을 여러 곳에 사용한 경우 각 배치의 위치와 크기를 별도로 처리합니다. 일반 도형과 정확한 쪽 배치는 원본과 렌더를 대조해 확인하세요.
 `table_diff`는 본문 표의 순서와 중첩 위치, 셀 주소, 병합 범위, 셀 텍스트를 비교합니다. `json_to_hwpx`는 파싱 JSON과 복원본을, HWPX 입력의 `source_to_json`은 원본과 JSON을 비교합니다. 바이너리 HWP의 `source_to_json`은 null입니다. 차이 건수와 최대 10개 위치를 반환합니다.
+
+### HWPX 표 복원 검증
+
+파서가 원본과 대응시킨 셀에서 도형의 배치와 좌표를 읽고, 복원기가 그 셀에 편집 가능한 HWPX 도형으로 기록합니다. 텍스트 상자, 바이너리 자산에 의존하는 도형, 다른 도형을 참조하는 연결선에는 이 방식이 적용되지 않습니다.
+
+기상청 사업설명자료의 두 중첩 표를 rhwp로 대조했습니다. 복원한 흐름도에서 도형 6개의 트리가 원본과 일치했습니다(재발급한 객체 ID 제외). 하단 설명과 화살표의 겹침은 여전히 보입니다. 회차별 화면 차이와 구조 비교 방법은 [표 복원 평가](docs/table-roundtrip-evaluation.md)에 정리했습니다.
+
+합성 문서 회귀 검사는 `python -m pytest tests/test_vector_anchor_roundtrip_crop.py tests/test_table_vector_kinds.py tests/test_table_images.py`로 실행합니다.

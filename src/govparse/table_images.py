@@ -4,9 +4,11 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import math
 import re
 import os
 import tempfile
+import unicodedata
 from copy import deepcopy
 from pathlib import Path
 from zipfile import ZipFile
@@ -226,14 +228,54 @@ def _record_subtrees(records):
     return output
 
 
-def _crop_png(png: bytes, margin: int = 12) -> tuple[bytes, bool]:
+def _crop_png(png: bytes, margin: int = 12, page_svg=None, repair_symbols: bool = False) -> tuple[bytes, bool]:
     """Crop to non-white content with a safety margin; fail if that is uncertain."""
     from PIL import Image, ImageChops
 
+    svg_text = None
+    if page_svg is not None and repair_symbols:
+        try:
+            svg_text = page_svg()
+        except Exception:
+            # SVG is optional; preserve the established raster crop on failure.
+            svg_text = None
+    if svg_text is not None and repair_symbols:
+        # Some portable renderers omit symbol glyphs when the requested font is
+        # unavailable. Repair only verified blank symbol-only cells; the helper
+        # returns the original bytes for already-rendered or unsupported cases.
+        from govparse.table_glyphs import repair_missing_symbol_glyphs
+
+        png = repair_missing_symbol_glyphs(png, svg_text)
     image = Image.open(io.BytesIO(png)).convert("RGB")
     bbox = ImageChops.difference(image, Image.new("RGB", image.size, "white")).getbbox()
     if not bbox:
         raise ValueError("rendered_page_has_no_crop_content")
+    needs_body_clip = bbox[3] > image.height * 0.85
+    if page_svg is not None and svg_text is None and needs_body_clip:
+        try:
+            svg_text = page_svg()
+        except Exception:
+            svg_text = None
+    # A folio outside the body can make a small table look a full page tall.
+    # Restrict the raster only when the renderer supplies its body clipping rectangle.
+    if svg_text is not None and needs_body_clip:
+        try:
+            svg = ET.fromstring(svg_text.encode("utf8"))
+            for group in svg.iterfind(".//{*}g[@clip-path]"):
+                ref = re.fullmatch(r"url\(#(body-clip-[0-9]+)\)", group.get("clip-path", ""))
+                if ref:
+                    rect = svg.find(f".//{{*}}clipPath[@id='{ref[1]}']/{{*}}rect")
+                    if rect is not None:
+                        sx = image.width / float(svg.get("width"))
+                        sy = image.height / float(svg.get("height"))
+                        x, y, w, h = (float(rect.get(key)) for key in ("x", "y", "width", "height"))
+                        region = image.crop((int(x*sx), int(y*sy), math.ceil((x+w)*sx), math.ceil((y+h)*sy)))
+                        body_bbox = ImageChops.difference(region, Image.new("RGB", region.size, "white")).getbbox()
+                        if body_bbox:
+                            image, bbox = region, body_bbox
+                    break
+        except (ET.XMLSyntaxError, OSError, ValueError, TypeError):
+            pass
     left, top, right, bottom = bbox
     left, top = max(0, left - margin), max(0, top - margin)
     right, bottom = min(image.width, right + margin), min(image.height, bottom + margin)
@@ -241,6 +283,17 @@ def _crop_png(png: bytes, margin: int = 12) -> tuple[bytes, bool]:
     output = io.BytesIO()
     cropped.save(output, format="PNG", optimize=False)
     return output.getvalue(), True
+
+
+def _table_has_single_symbol_text(table) -> bool:
+    """Cheap native-XML gate so ordinary table renders never request SVG."""
+    for cell in table.iterfind(".//{*}tc"):
+        text_nodes = [node for node in cell.iter() if ET.QName(node).localname == "t" and (node.text or "").strip()]
+        if len(text_nodes) == 1:
+            text = (text_nodes[0].text or "").strip()
+            if len(text) == 1 and text.isprintable() and unicodedata.category(text).startswith("S"):
+                return True
+    return False
 
 
 def extract_table_images_by_id(source, ir, out_dir, table_ids=None):
@@ -334,11 +387,17 @@ def extract_table_images_by_id(source, ir, out_dir, table_ids=None):
                 record["reason"] = f"rhwp_render_failed:{type(exc).__name__}:{exc}"
                 continue
             prepared_pages = []
+            has_symbol_cell = _table_has_single_symbol_text(element)
+            render_svg = getattr(document, "render_svg", None)
             for index, png in enumerate(pages, start=1):
                 if pymupdf.Pixmap(png).is_unicolor:
                     continue
                 try:
-                    png, cropped = _crop_png(png)
+                    png, cropped = _crop_png(
+                        png,
+                        page_svg=(lambda: render_svg(index - 1)) if callable(render_svg) else None,
+                        repair_symbols=has_symbol_cell,
+                    )
                 except Exception as exc:
                     record["reason"] = f"crop_failed:{type(exc).__name__}:{exc}"
                     prepared_pages = []

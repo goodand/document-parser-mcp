@@ -1,28 +1,51 @@
 # GovParse Desktop
 
-A Windows desktop front end for the GovParse MCP engine. The app creates JSON and HTML exports, reviews embedded pictures, captures rendered tables, and restores editable HWPX. Saving as HWP uses Hancom Office when available.
+Windows x64 ships the C# WinForms application. The PySide6 interface in `gpqt/` runs from source on Windows for development and testing. It is intended for a separate macOS application bundle, with Linux planned later. Native macOS packaging and GUI verification are pending.
 
-## Requirements
+The desktop worker parses documents with rhwp. The JSON + PNG export uses GovParse for verified table images. HWPX export uses the app's IR and the vendored restorer in `gpdesk/vendor/hwp_restore.py` (engine commit `ea53268`). The separate MCP restorer has its own round-trip measurements.
 
-- Windows x64 and Python 3.12 for development
-- Hancom Office for HWP conversion and GUI verification
-- GovParse MCP engine, installed separately
+OCR can discover a configured engine Python from a Windows LM Studio or Claude registration. For manual configuration, supply the executable and model paths as shown below.
 
-The engine is not bundled. Set its Python and source paths in a user-local config.json or let the app discover GovParse from LM Studio or Claude configuration. See manual.html for user instructions.
+## PySide6 application
 
-## Development
+Requirements: Python 3.12 and uv. The locked GUI environment currently targets Python 3.12.
 
-Install the locked environment with uv:
+From this directory:
 
-    uv sync --locked --python 3.12
-    uv run pytest tests -m "not live"
+    uv sync --locked --group dev
+    uv run python -m gpqt.app
 
-Live integration tests require a configured engine. HWP export and GUI verification also require Hancom Office.
+When MCP discovery is unavailable, place a local `config.json` next to this README with the engine paths for the current OS, for example:
 
-Build the Windows installer from an activated environment with:
+    {"engine_python": "/path/to/python", "engine_src": "/path/to/document-parser-mcp/src", "ocr_models": "/path/to/rapidocr/models"}
+
+OCR uses the model directory configured for the engine. Model weights are not included in this source checkout.
+
+## GUI tests
+
+The PySide6 tests exercise the application offscreen with a scripted worker and synthetic document data. They locate widgets by objectName and check interactions and state. They do not compare screenshot pixels.
+
+From this directory:
+
+    uv run pytest qt/tests -m "not integration" -q
+
+Run the three real-worker tests with `uv run pytest qt/tests -m integration -q`. They open synthetic documents, export JSON and PNG, and reopen results after moving the files. To inspect the screen, start the app and open `samples/synthetic-figures.hwpx`.
+
+## Windows compatibility app
+
+Desktop.cs, FigurePanel.cs, Theme.cs, and SettingsForm.cs implement the existing WinForms build. On Windows x64 with the .NET Framework C# compiler and the local OCR model dependencies configured, build it with:
 
     uv run python build.py
 
-The installer and bundled runtime are generated under dist/. Build on Windows x64 with the .NET Framework C# compiler available at the Windows path used by build.py.
+The installer and bundled runtime are generated under dist/. They are build outputs and are not included in the source repository.
 
-Synthetic fixtures and their generator scripts are used for regression tests. Real source documents and OCR model weights are not included.
+## Project layout
+
+- gpqt/ contains the cross-platform PySide6 interface.
+- gpdesk/ contains the document worker, exports, figure review, and platform-neutral processing.
+- worker.py starts the document worker.
+- qt/ contains the GUI behavior specification and pytest-qt tests.
+- tests/ contains worker and export tests.
+- samples/ contains generated synthetic fixtures and their generators.
+
+Real source documents, credentials, local configuration, compiled installers, and model weights do not belong in this repository.

@@ -8,6 +8,7 @@ from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from lxml import etree as E
+from .table_roundtrip import is_inline_picture
 
 clean = re.compile(r"[^\x09\x0a\x0d\x20-\ud7ff\ue000-\ufffd\U00010000-\U0010ffff]")
 ns = "{http://www.hancom.co.kr/hwpml/2011/paragraph}"
@@ -77,14 +78,20 @@ def restore_body(source: Path, destination: Path) -> None:
             height = heights.get(str(inline.get("raw_style_id")))
             if height is None:
                 return "0"
-            if height not in char_ids:
+            metrics = ir.get("character_metrics", {}).get(str(inline.get("raw_style_id")), {})
+            key = (height, tuple((name, tuple(sorted(attrs.items()))) for name, attrs in sorted(metrics.items()))) if metrics else height
+            if key not in char_ids:
                 prop = deepcopy(base_char)
                 prop.set("height", str(height))
                 prop.set("id", str(next(next_char)))
                 char_props.append(prop)
-                char_ids[height] = prop.get("id")
+                for name, attributes in metrics.items():
+                    child = prop.find("{*}" + name)
+                    if child is not None:
+                        child.attrib.update(attributes)
+                char_ids[key] = prop.get("id")
                 char_props.set("itemCnt", str(len(char_props)))
-            return char_ids[height]
+            return char_ids[key]
 
         para_props = header.find(".//{*}paraProperties")
         base_para = para_props.find("{*}paraPr[@id='0']")
@@ -161,16 +168,40 @@ def restore_body(source: Path, destination: Path) -> None:
                     cw = int(sub(cell, "cellSz").get("width"))
                     blocks = c["blocks"] or [dict(kind="paragraph", text="")]
                     refs = geometry.get("paragraph_refs", [])
+                    logical_blocks = [
+                        block
+                        for index, block in enumerate(blocks)
+                        if not is_inline_picture(blocks, index)
+                    ]
+                    refs_aligned = len(refs) == len(logical_blocks)
+                    paragraph_index = 0
                     for block_index, b in enumerate(blocks):
-                        para_id = para_ids.get(refs[block_index], "0") if len(refs) == len(blocks) else "0"
+                        if is_inline_picture(blocks, block_index):
+                            previous = sub(cell, "subList")[-1]
+                            picture = E.fromstring(b["native_picture"].encode("utf8"))
+                            picture.set("id", str(next(ids)))
+                            runs = previous.findall(ns + "run")
+                            (runs[-1] if runs else sub(previous, "run")).append(picture)
+                            continue
+                        para_id = para_ids.get(refs[paragraph_index], "0") if refs_aligned else "0"
                         block_paragraph = paragraph(b, max(1, cw - 180), para_id)
-                        anchor_lines = geometry.get("table_anchor_lines", {}).get(str(block_index))
-                        if anchor_lines and b["kind"] == "table":
+                        anchor_lines = geometry.get("table_anchor_lines", {}).get(str(paragraph_index))
+                        vectors = geometry.get("vector_anchors", {}).get(str(paragraph_index), [])
+                        if vectors and b["kind"] == "paragraph":
+                            vector_run = sub(block_paragraph, "run")
+                            for index, xml in enumerate(vectors):
+                                shape = E.fromstring(xml.encode("utf8"))
+                                for component in shape.iter():
+                                    if component.get("id") is not None:
+                                        component.set("id", str(next(ids)))
+                                vector_run.append(shape)
+                        if anchor_lines and not b.get("picture_cell_lines"):
                             array = el("linesegarray")
                             for line in anchor_lines:
                                 array.append(el("lineseg", **line))
                             block_paragraph.append(array)
                         sub(cell, "subList").append(block_paragraph)
+                        paragraph_index += 1
             elif node["kind"] == "picture" and node.get("native_picture"):
                 picture = E.fromstring(node["native_picture"].encode("utf8"))
                 picture.set("id", str(next(ids)))
@@ -211,6 +242,8 @@ def restore_body(source: Path, destination: Path) -> None:
                     page.attrib.update(geometry["page"])
                     sub(page, "margin").attrib.update(geometry["margin"])
         for b in body:
+            if (b.get("section_setup_only") or b.get("table_anchor_only")) and b.get("kind") == "paragraph" and not b.get("text"):
+                continue
             idx = (b.get("prov") or {}).get("section_idx", 0)
             sections.get(idx, section).append(paragraph(b, 42520))
 
