@@ -1348,7 +1348,7 @@ def get_visual_evidence(
 
 
 @mcp.tool()
-def ocr_image(image_path: str, raw: bool = False, padding_px: int = 60) -> str:
+def ocr_image(image_path: str, raw: bool = False, padding_px: int = 60, max_side_px: int | None = 1024) -> str:
     """이미지 파일을 로컬 RapidOCR로 읽어 텍스트 후보와 원본 좌표를 반환한다.
 
     기본은 흰 여백을 추가해 글자 가장자리 검출을 돕는다. raw=true를 주면
@@ -1357,13 +1357,14 @@ def ocr_image(image_path: str, raw: bool = False, padding_px: int = 60) -> str:
 
     Args:
         image_path: 로컬 이미지 파일의 경로
-        raw: true이면 여백 없이 원본 이미지를 읽음
+        raw: true이면 축소와 여백을 모두 생략하고 원본을 읽음
+        max_side_px: 긴 변 상한(기본 1024), null이면 축소 생략
         padding_px: 기본 60px 흰 여백의 크기 (0~256)
     """
     from .image_ocr import recognize_image_json
 
     try:
-        return recognize_image_json(image_path, raw=raw, padding_px=padding_px)
+        return recognize_image_json(image_path, raw=raw, padding_px=padding_px, max_side_px=max_side_px)
     except ImportError as exc:
         return json.dumps({
             "status": "unavailable",

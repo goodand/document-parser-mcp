@@ -97,3 +97,27 @@ def test_non_image_path_is_rejected(tmp_path):
 
     with pytest.raises(ValueError, match="지원하지 않는 이미지"):
         image_ocr.recognize_image(text_path)
+
+
+@pytest.mark.parametrize("raw,limit,pad,size", [
+    (False, 10, 2, (5, 10)),
+    (False, 10, 0, (5, 10)),
+    (False, None, 2, (11, 21)),
+    (True, 10, 2, (11, 21)),
+])
+def test_scaled_coordinates_use_actual_rounded_dimensions(tmp_path, monkeypatch, raw, limit, pad, size):
+    cv2 = pytest.importorskip("cv2")
+    path = tmp_path / "wide.png"
+    path.write_bytes(cv2.imencode(".png", np.zeros((11, 21, 3), np.uint8))[1].tobytes())
+    height, width = size
+    margin = 0 if raw else pad
+
+    def read(data, model_dir):
+        pixels = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+        assert pixels.shape[:2] == (height + 2 * margin, width + 2 * margin)
+        return {"boxes": [[[margin + width / 2, margin + height / 2]]]}
+
+    monkeypatch.setattr(image_ocr, "_run_ocr", read)
+    result = image_ocr.recognize_image(path, raw=raw, padding_px=pad,
+                                       max_side_px=limit, model_dir=tmp_path)
+    assert result["boxes"] == [[[10.5, 5.5]]]
