@@ -198,3 +198,18 @@ def test_pure_vector_table_crop_keeps_all_four_cell_regions(tmp_path, monkeypatc
     for point in ((12, 12), (362, 12), (12, 332), (362, 332)):
         assert pixels[point] != (255, 255, 255)
 
+
+
+def test_separate_picture_paragraph_survives_binary_hwp_roundtrip(tmp_path):
+    import rhwp
+    from govparse.hwp_source import extract_source
+    from govparse.hwp_restore import restore_body
+    from govparse.table_roundtrip import read_hwpx
+
+    source = Path(__file__).resolve().parents[1] / "govparse-desktop/samples/synthetic-figures.hwp"
+    reference = tmp_path / "native.hwpx"
+    reference.write_bytes(rhwp.parse(str(source)).to_hwpx_bytes())
+    manifest = extract_source(source, tmp_path)
+    restored = tmp_path / "restored.hwpx"
+    restore_body(tmp_path / manifest["document_path"], restored)
+    assert read_hwpx(reference) == read_hwpx(restored)

@@ -6,6 +6,24 @@ from zipfile import ZipFile
 from lxml import etree as ET
 
 HP = {"p": "http://www.hancom.co.kr/hwpml/2011/paragraph"}
+VECTOR_TAGS = {
+    f"{{{HP['p']}}}{kind}"
+    for kind in ("polygon", "container", "line", "rect", "ellipse", "arc", "curve", "connectLine")
+}
+
+
+def is_inline_picture(blocks, index):
+    """True only when a native image can be merged into an existing paragraph."""
+    if not 0 <= index < len(blocks):
+        return False
+    block = blocks[index]
+    return (
+        block.get("kind") == "picture"
+        and block.get("inline_after_paragraph")
+        and bool(block.get("native_picture"))
+        and index > 0
+        and blocks[index - 1].get("kind") == "paragraph"
+    )
 
 
 def ir_records(blocks, parent=""):
@@ -18,7 +36,8 @@ def ir_records(blocks, parent=""):
             contents = cell["blocks"]
             blocks_in_cell = tuple(
                 ("table", "") if block["kind"] == "table" else ("paragraph", block.get("text", ""))
-                for block in contents
+                for index, block in enumerate(contents)
+                if not is_inline_picture(contents, index)
             )
             yield key, (cell["row_span"], cell["col_span"], blocks_in_cell)
             yield from ir_records(contents, key)
@@ -97,14 +116,21 @@ def xml_records(tables, parent="", border_styles=None, geometry=False):
                 for paragraph in paragraphs:
                     blocks = list(paragraph_blocks(paragraph))
                     children = paragraph.findall("p:run/*", HP)
-                    vector_tags = {f"{{{HP['p']}}}{kind}" for kind in ("polygon", "container", "line", "rect", "ellipse")}
-                    vectors = [child for child in children if child.tag in vector_tags]
+                    vectors = [child for child in children if child.tag in VECTOR_TAGS]
                     if (vectors and blocks == [("paragraph", "")] and
-                            all(child.tag in vector_tags or child.tag == f"{{{HP['p']}}}t" for child in children) and
+                            all(child.tag in VECTOR_TAGS or child.tag == f"{{{HP['p']}}}t"
+                                for child in children) and
                             not any(n.get("binaryItemIDRef") or n.tag.endswith(("}drawText", "}subList", "}ole"))
                                     for shape in vectors for n in shape.iter())):
-                        vector_anchors[str(offset)] = [ET.tostring(shape, encoding="unicode", with_tail=False)
-                                                       for shape in vectors]
+                        # Attached endpoints refer to other shape instances in the source document.
+                        # Keep independent siblings when a connector or group needs those targets.
+                        anchors = [
+                            ET.tostring(shape, encoding="unicode", with_tail=False)
+                            for shape in vectors
+                            if all(node.get("subjectIDRef", "0") == "0" for node in shape.iter())
+                        ]
+                        if anchors:
+                            vector_anchors[str(offset)] = anchors
                     simple_text = len(blocks) == 1 and all(child.tag == f"{{{HP['p']}}}t" for child in children)
                     if blocks == [("table", "")] or str(offset) in vector_anchors or simple_text:
                         lines = paragraph.findall("p:linesegarray/p:lineseg", HP)

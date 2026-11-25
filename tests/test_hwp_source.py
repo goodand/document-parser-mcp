@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 from govparse import hwp_source
@@ -287,4 +288,242 @@ def test_ambiguous_repeated_picture_reference_is_left_unmatched(tmp_path):
     hwp_source._attach_pictures(ir, source)
 
     assert "native_picture" not in ir["body"][0]
+
+
+def _write_inline_picture_cell(path, separate_picture_paragraph):
+    from copy import deepcopy
+    from lxml import etree as ET
+    from zipfile import ZipFile
+
+    hp = "{http://www.hancom.co.kr/hwpml/2011/paragraph}"
+    template = Path(hwp_source.__file__).with_name("blank_table.hwpx")
+    with ZipFile(template) as source:
+        section = ET.fromstring(source.read("Contents/section0.xml"))
+        table = section.find(".//{*}tbl")
+        cell = table.find("./{*}tr/{*}tc")
+        sublist = cell.find("{*}subList")
+        for child in list(sublist):
+            sublist.remove(child)
+
+        vector_paragraph = ET.SubElement(sublist, hp + "p", {
+            "id": "9001", "paraPrIDRef": "0", "styleIDRef": "0",
+        })
+        vector_run = ET.SubElement(vector_paragraph, hp + "run", {"charPrIDRef": "0"})
+        ET.SubElement(vector_run, hp + "rect", {
+            "id": "9002", "x": "321", "y": "654", "width": "2345", "height": "678",
+        })
+
+        text_paragraph = ET.SubElement(sublist, hp + "p", {
+            "id": "9003", "paraPrIDRef": "0", "styleIDRef": "0",
+        })
+        text_run = ET.SubElement(text_paragraph, hp + "run", {"charPrIDRef": "0"})
+        text = ET.SubElement(text_run, hp + "t")
+        text.text = "기상 관측"
+
+        if separate_picture_paragraph:
+            picture_paragraph = ET.SubElement(sublist, hp + "p", {
+                "id": "9004", "paraPrIDRef": "0", "styleIDRef": "0",
+            })
+            picture_run = ET.SubElement(picture_paragraph, hp + "run", {"charPrIDRef": "0"})
+        else:
+            picture_run = text_run
+        picture = ET.SubElement(picture_run, hp + "pic", {"id": "9005"})
+        ET.SubElement(picture, hp + "sz", {"width": "4321", "height": "1234"})
+        ET.SubElement(picture, hp + "img", {"binaryItemIDRef": "image1"})
+
+        content = ET.fromstring(source.read("Contents/content.hpf"))
+        manifest = content.find(".//{*}manifest")
+        ET.SubElement(manifest, manifest[0].tag, {
+            "id": "image1", "href": "BinData/image1.png", "media-type": "image/png",
+        })
+        with ZipFile(path, "w") as output:
+            for item in source.infolist():
+                if item.filename == "Contents/section0.xml":
+                    payload = ET.tostring(section, encoding="UTF-8", xml_declaration=True)
+                elif item.filename == "Contents/content.hpf":
+                    payload = ET.tostring(content, encoding="UTF-8", xml_declaration=True)
+                else:
+                    payload = source.read(item.filename)
+                output.writestr(item, payload)
+            output.writestr("BinData/image1.png", b"synthetic-image-bytes")
+
+
+def _inline_picture_ir(separate_picture_paragraph):
+    blocks = [
+        {"kind": "paragraph", "text": "", "inlines": [], "prov": {}},
+        {"kind": "paragraph", "text": "기상 관측", "inlines": [], "prov": {}},
+    ]
+    if separate_picture_paragraph:
+        blocks.append({"kind": "picture", "image": {"uri": "bin://1"}, "prov": {}})
+    else:
+        blocks[-1]["text"] = "기상 관측"
+        blocks.append({"kind": "picture", "image": {"uri": "bin://1"}, "prov": {}})
+    return {"body": [{
+        "kind": "table",
+        "rows": 1,
+        "cols": 1,
+        "prov": {"section_idx": 0},
+        "cells": [{
+            "row": 0,
+            "col": 0,
+            "row_span": 1,
+            "col_span": 1,
+            "blocks": blocks,
+        }],
+    }]}
+
+
+def _picture_positions(path):
+    from zipfile import ZipFile
+    from lxml import etree as ET
+
+    positions = []
+    with ZipFile(path) as package:
+        sections = sorted(
+            name for name in package.namelist()
+            if name.startswith("Contents/section") and name.endswith(".xml")
+        )
+        for section_name in sections:
+            root = ET.fromstring(package.read(section_name))
+            for paragraph in root.iter("{http://www.hancom.co.kr/hwpml/2011/paragraph}p"):
+                for picture in paragraph.iter("{http://www.hancom.co.kr/hwpml/2011/paragraph}pic"):
+                    cells = []
+                    parent = picture.getparent()
+                    while parent is not None:
+                        if parent.tag == "{http://www.hancom.co.kr/hwpml/2011/paragraph}tc":
+                            address = parent.find("{http://www.hancom.co.kr/hwpml/2011/paragraph}cellAddr")
+                            if address is not None:
+                                cells.append((address.get("rowAddr"), address.get("colAddr")))
+                        parent = parent.getparent()
+                    cells.reverse()
+                    size = picture.find("{http://www.hancom.co.kr/hwpml/2011/paragraph}sz")
+                    image = picture.find(".//{http://www.hancom.co.kr/hwpml/2011/paragraph}img")
+                    caption = "".join(
+                        node.text or "" for node in picture.findall(
+                            ".//{http://www.hancom.co.kr/hwpml/2011/paragraph}caption//{http://www.hancom.co.kr/hwpml/2011/paragraph}t"
+                        )
+                    )
+                    positions.append((
+                        section_name,
+                        tuple(cells),
+                        paragraph.getparent().index(paragraph),
+                        size.get("width") if size is not None else None,
+                        size.get("height") if size is not None else None,
+                        image.get("binaryItemIDRef") if image is not None else None,
+                        caption,
+                    ))
+    return positions
+
+
+def test_trailing_picture_inline_marker_respects_native_paragraphs(tmp_path, monkeypatch):
+    import json
+    from zipfile import ZipFile
+    from lxml import etree as ET
+    from govparse.hwp_restore import restore_body
+    from govparse.table_roundtrip import compare, ir_records, read_hwpx
+
+    for separate_picture_paragraph in (False, True):
+        source = tmp_path / f"picture-{separate_picture_paragraph}.hwpx"
+        _write_inline_picture_cell(source, separate_picture_paragraph)
+        ir = _inline_picture_ir(separate_picture_paragraph)
+        monkeypatch.setattr(
+            hwp_source,
+            "_rhwp_parse",
+            lambda _path, parsed=ir: SimpleNamespace(
+                to_ir_json=lambda **_kwargs: json.dumps(parsed, ensure_ascii=False)
+            ),
+        )
+        sidecar = tmp_path / f"sidecar-{separate_picture_paragraph}"
+        manifest = hwp_source.extract_source(source, sidecar)
+        parsed = json.loads((sidecar / manifest["document_path"]).read_text("utf8"))
+        picture = parsed["body"][0]["cells"][0]["blocks"][-1]
+
+        assert bool(picture.get("inline_after_paragraph")) is (not separate_picture_paragraph)
+        cell_records = dict(ir_records(parsed["body"]))
+        assert cell_records == read_hwpx(source)
+
+        restored = tmp_path / f"restored-{separate_picture_paragraph}.hwpx"
+        restore_body(sidecar / manifest["document_path"], restored)
+        assert compare(read_hwpx(source), read_hwpx(restored))["different_records"] == 0
+        assert _picture_positions(source) == _picture_positions(restored)
+        with ZipFile(restored) as package:
+            section = ET.fromstring(package.read("Contents/section0.xml"))
+        cell = section.find(".//{*}tbl/{*}tr/{*}tc")
+        paragraphs = cell.findall("./{*}subList/{*}p")
+        assert len(paragraphs) == (3 if separate_picture_paragraph else 2)
+        assert len(cell.findall(".//{*}rect")) == 1
+        assert len(cell.findall(".//{*}pic")) == 1
+
+
+def test_legacy_hwp_without_pictures_uses_native_geometry_when_conversion_succeeds(tmp_path, monkeypatch):
+    import json
+    from zipfile import ZipFile
+
+    source = tmp_path / "simple.hwp"
+    source.write_bytes(b"synthetic hwp")
+    template = Path(hwp_source.__file__).with_name("blank_table.hwpx")
+    with ZipFile(template) as package:
+        native_hwpx = package.read("mimetype")
+        from io import BytesIO
+        buffer = BytesIO()
+        with ZipFile(buffer, "w") as copy:
+            for item in package.infolist():
+                copy.writestr(item, package.read(item.filename))
+        native_hwpx = buffer.getvalue()
+    ir = {"body": [{
+        "kind": "table",
+        "rows": 1,
+        "cols": 1,
+        "prov": {"section_idx": 0},
+        "cells": [{
+            "row": 0, "col": 0, "row_span": 1, "col_span": 1,
+            "blocks": [{"kind": "paragraph", "text": "", "inlines": [], "prov": {}}],
+        }],
+    }]}
+    calls = []
+    monkeypatch.setattr(hwp_source, "_rhwp_parse", lambda _path: SimpleNamespace(
+        to_ir_json=lambda **_kwargs: json.dumps(ir),
+        to_hwpx_bytes=lambda: calls.append(True) or native_hwpx,
+    ))
+
+    sidecar = tmp_path / "converted"
+    manifest = hwp_source.extract_source(source, sidecar)
+    parsed = json.loads((sidecar / manifest["document_path"]).read_text("utf8"))
+
+    assert calls == [True]
+    assert parsed["body"][0]["native_geometry"]["sz"]
+    assert parsed["body"][0]["cells"][0]["native_geometry"]["cellSz"]["width"]
+    assert parsed["cell_border_styles"]
+
+
+def test_legacy_hwp_conversion_failure_does_not_break_parsing(tmp_path, monkeypatch):
+    import json
+
+    source = tmp_path / "simple.hwp"
+    source.write_bytes(b"synthetic hwp")
+    ir = {"body": [{
+        "kind": "table",
+        "rows": 1,
+        "cols": 1,
+        "prov": {"section_idx": 0},
+        "cells": [{
+            "row": 0, "col": 0, "row_span": 1, "col_span": 1,
+            "blocks": [{"kind": "paragraph", "text": "", "inlines": [], "prov": {}}],
+        }],
+    }]}
+
+    class ParsedDocument:
+        def to_ir_json(self, **_kwargs):
+            return json.dumps(ir)
+
+        def to_hwpx_bytes(self):
+            raise RuntimeError("synthetic conversion failure")
+
+    monkeypatch.setattr(hwp_source, "_rhwp_parse", lambda _path: ParsedDocument())
+    sidecar = tmp_path / "conversion-failed"
+    manifest = hwp_source.extract_source(source, sidecar)
+    parsed = json.loads((sidecar / manifest["document_path"]).read_text("utf8"))
+
+    assert manifest["counts"]["tables"] == 1
+    assert "native_geometry" not in parsed["body"][0]
     assert "picture_assets" not in ir

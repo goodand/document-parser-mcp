@@ -26,7 +26,7 @@ from .normalize import sha256_of
 
 DOCUMENT = "document.json"
 MANIFEST = "_source_manifest.json"
-SOURCE_MANIFEST_VERSION = 24
+SOURCE_MANIFEST_VERSION = 25
 
 
 def _rhwp_parse(path: Path) -> Any:
@@ -151,6 +151,7 @@ def _attach_pictures(ir, native):
                 if nodes and paragraphs and len(children) >= 2 and children[-1]["kind"] == "picture":
                     last = paragraphs[-1].findall("./{*}run/*")
                     content = [el for el in last if not (el.tag.endswith("}t") and not len(el) and not el.text)]
+                    text_nodes = [el for el in content[:-1] if el.tag.endswith("}t")]
                     if (content and content[-1] is matched.get(id(children[-1]))
                             and all(el.tag.endswith("}t") for el in content[:-1])
                             and children[-2]["kind"] == "paragraph"):
@@ -158,7 +159,7 @@ def _attach_pictures(ir, native):
                         prefix = [("table", "") if b["kind"] == "table" else (b["kind"], b.get("text", ""))
                                   for b in children[:-1]]
                         if (prefix == list(cell_blocks(tc)) and children[-2].get("text")
-                                == "".join(text_content(el) for el in content[:-1])):
+                                == "".join(text_content(el) for el in text_nodes)):
                             children[-1]["inline_after_paragraph"] = True
                 if has_cell_picture and len(nodes) == len(pics) and all(id(node) in matched for node in nodes):
                     source_blocks = []
@@ -182,6 +183,11 @@ def _attach_pictures(ir, native):
                         else:
                             if len(retained) == len(source_blocks):
                                 children[:] = retained
+                                for index, block in enumerate(children):
+                                    # This path has just proved that every picture occupies
+                                    # its own native paragraph; never retain an inline marker.
+                                    if block["kind"] == "picture":
+                                        block.pop("inline_after_paragraph", None)
                                 for block, para in zip(retained, tc.findall("./{*}subList/{*}p")):
                                     lines = para.findall("./{*}linesegarray/{*}lineseg")
                                     if lines:
@@ -278,26 +284,48 @@ def extract_source(src: Path, out_dir: Path) -> dict[str, Any]:
     counts = _counts(ir)
     removed = 0
     native = src if src.suffix.lower() == ".hwpx" else None
-    if counts["tables"] > sum(node.get("kind") == "table" for node in ir["body"]):
+    native_conversion_attempted = False
+    if native is None and (counts["tables"] or counts["pictures"]):
+        native_conversion_attempted = True
+        try:
+            native = BytesIO(document.to_hwpx_bytes())
+        except Exception:
+            native = None
+    if (native is not None
+            and counts["tables"] > sum(node.get("kind") == "table" for node in ir["body"])):
         from .table_roundtrip import read_hwpx, remove_table_placeholders
 
-        if native is None:
-            native = BytesIO(document.to_hwpx_bytes())
-        removed = remove_table_placeholders(ir["body"], read_hwpx(native))
+        if native_conversion_attempted:
+            try:
+                removed = remove_table_placeholders(ir["body"], read_hwpx(native))
+            except Exception:
+                removed = 0
+        else:
+            removed = remove_table_placeholders(ir["body"], read_hwpx(native))
         if removed:
             ir_text = json.dumps(ir, ensure_ascii=False, indent=2)
             counts = _counts(ir)
-    if counts["pictures"]:
-        if native is None:
-            native = BytesIO(document.to_hwpx_bytes())
-        _attach_pictures(ir, native)
+    if counts["pictures"] and native is not None:
+        if native_conversion_attempted:
+            try:
+                _attach_pictures(ir, native)
+            except Exception:
+                pass
+        else:
+            _attach_pictures(ir, native)
         counts = _counts(ir)
         if ir.get("picture_assets"):
             ir_text = json.dumps(ir, ensure_ascii=False, indent=2)
     if native is not None and counts["tables"]:
         from .table_roundtrip import attach_cell_borders
 
-        attach_cell_borders(ir, native)
+        if native_conversion_attempted:
+            try:
+                attach_cell_borders(ir, native)
+            except Exception:
+                pass
+        else:
+            attach_cell_borders(ir, native)
         if ir.get("character_heights") or ir.get("section_page_geometry") or ir.get("page_geometry") or ir.get("cell_border_styles"):
             ir_text = json.dumps(ir, ensure_ascii=False, indent=2)
     if sha256_of(src) != source_hash:
