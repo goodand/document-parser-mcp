@@ -1,7 +1,36 @@
-<!doctype html><html lang="ko"><meta charset="utf-8"><title>GovParse Desktop 사용 설명서</title><style>body{font:16px/1.7 "Malgun Gothic",sans-serif;color:#20323a;max-width:800px;margin:3em auto;padding:0 20px}h1,h2{color:#00646e}code{overflow-wrap:anywhere;background:#eef5f5}table{border-collapse:collapse}td,th{padding:8px;border:1px solid #dde5e5;text-align:left}</style><h1>GovParse Desktop 사용 설명서</h1><p>Windows x64용 0.1.0 로컬 배포판. 문서를 인터넷으로 보내지 않고 HWP·HWPX를 열어 JSON, PNG, HTML 또는 편집 가능한 HWPX를 저장합니다.</p>
+<!doctype html><html lang="ko"><meta charset="utf-8"><title>GovParse Desktop 사용 설명서</title><style>body{font:16px/1.7 "Malgun Gothic",sans-serif;color:#20323a;max-width:800px;margin:3em auto;padding:0 20px}h1,h2{color:#00646e}code{overflow-wrap:anywhere;background:#eef5f5}pre{overflow-x:auto;background:#eef5f5;padding:12px}table{border-collapse:collapse}td,th{padding:8px;border:1px solid #dde5e5;text-align:left}</style><h1>GovParse Desktop 사용 설명서</h1><p>Windows x64용 0.1.0 로컬 배포판. 문서를 인터넷으로 보내지 않고 HWP·HWPX를 열어 JSON, PNG, HTML 또는 편집 가능한 HWPX를 저장합니다.</p>
 <h2>1. 다른 PC에 설치하기</h2><ol><li>Windows 10 또는 11 x64 PC에 <b>GovParse-Desktop-Windows-x64.zip</b>를 복사합니다. .NET Framework 4.5 이상과 현재 사용자의 앱 설치 권한이 필요합니다.</li><li>ZIP 전체를 로컬 폴더에 압축 해제하고 install.cmd를 더블클릭합니다. app.zip은 install.cmd와 같은 위치에 두세요. 개인 배포용으로 코드 서명이 없습니다. 조직에서 서명된 앱만 허용하면 관리자에게 배포를 문의하세요.</li><li>시작 메뉴에서 <b>GovParse Desktop</b>을 엽니다. Python, Java, LM Studio, API 키, 한컴오피스 및 인터넷 연결은 기본 기능에 필요하지 않습니다.</li></ol>
 <h2>2. 원본 보기</h2><p>파일 하나를 창에 끌어놓거나 <b>파일 열기</b>(Ctrl+O)를 누르세요. 첫 쪽이 나타나면 이전 쪽·다음 쪽으로 이동합니다. 내장 rhwp 렌더러가 그리므로 설치된 한글 글꼴이나 문서 구성에 따라 한컴에서 보이는 쪽 배치와 다를 수 있습니다.</p>
 <h2>3. 내보내기</h2><p>아래 목록에서 형식을 고르고 <b>내보내기</b>를 누른 다음 결과를 저장할 상위 폴더를 선택하세요. 작업이 끝나면 새 결과 폴더가 열립니다. 입력 파일은 그대로 유지됩니다.</p>
 <table><tr><th>선택</th><th>확인할 파일</th></tr><tr><td>JSON + PNG</td><td>document.json의 body에 문단과 표가 있습니다. assets에 추출 가능한 그림과 감지한 표의 캡처가 저장됩니다. desktop_export.table_captures에는 페이지 번호와 상대 경로가 들어갑니다. OCR은 이 배포판에 포함하지 않습니다.</td></tr><tr><td>HTML</td><td>document.html을 브라우저로 엽니다. 다른 곳으로 옮길 때 assets 폴더도 함께 복사하세요.</td></tr><tr><td>한글 문서 (.hwpx)</td><td>document.hwpx를 한글 또는 호환 뷰어에서 엽니다. 본문과 표가 편집 가능한 형태로 복원됩니다. 그림·서식·원본 페이지 배치는 보존되지 않을 수 있습니다. 바이너리 .hwp 저장은 지원하지 않습니다.</td></tr></table>
 <h2>4. 문제가 생기면</h2><p>먼저 작은 HWPX로 시험해 보세요. 미리보기 실패 시 내보내기를 별도로 시도할 수 있습니다. PNG가 없으면 문서에 그림이 없는지, 선이 없는 표 등으로 인해 표 검출에서 누락됐는지 원본과 대조하세요. 그림 처리 경고는 결과 폴더의 warnings.txt에서 확인합니다. 대형 파일은 작업당 최대 10분까지 기다립니다. 쓰기 오류가 나면 사용자 문서 폴더처럼 저장 가능한 위치를 다시 선택하세요.</p>
-<h2>5. 제거 및 데이터</h2><p>앱을 닫고 시작 메뉴의 GovParse Desktop 바로가기와 <code>%LOCALAPPDATA%\GovParse Desktop\0.1.0</code> 폴더를 삭제합니다. 이 버전은 사용자별 폴더 설치 방식입니다. 사용자가 선택한 위치에 저장한 결과물은 별도로 관리합니다. 앱 폴더의 licenses에 포함 구성요소의 라이선스가 있습니다.</p></html>
+<h2>5. 제거 및 데이터</h2><p>앱을 닫고 시작 메뉴의 GovParse Desktop 바로가기와 <code>%LOCALAPPDATA%\GovParse Desktop\0.1.0</code> 폴더를 삭제합니다. 이 버전은 사용자별 폴더 설치 방식입니다. 사용자가 선택한 위치에 저장한 결과물은 별도로 관리합니다. 앱 폴더의 licenses에 포함 구성요소의 라이선스가 있습니다.</p><h2 id="mcp">6. LM Studio에서 AI에게 표 이미지 요청하기</h2>
+<p>Desktop에서 직접 내보낼 때는 <b>JSON + PNG</b>를 고르세요. 대화로 같은 문서의 특정 표를 요청하려면 LM Studio에 <code>govparse</code> MCP 서버를 등록하고 연결하세요. 도구 목록에 <code>extract_hwp_table_images</code>가 보이는 버전이 필요합니다.</p>
+<ol><li>채팅에 <b>“govparse로 C:/문서/사업안내 폴더를 등록하고 HWP 파일 목록을 보여 줘.”</b>라고 입력하세요. AI가 <code>prepare_corpus</code>와 <code>list_documents</code>를 호출합니다. 폴더 경로는 내 PC의 실제 경로로 바꾸세요.</li>
+<li>목록에서 문서를 골라 <b>“이 문서의 표 목록을 이미지 생성 없이 보여 줘. 각 표의 ID와 첫 셀 내용도 알려 줘.”</b>라고 요청하세요. AI는 <code>list_only=true</code>로 조회한 뒤 응답의 <code>table_images_ir_json</code> 파일을 읽어 표를 찾을 수 있습니다. 이 파일을 읽으려면 클라이언트에서 결과 폴더에 접근할 수 있어야 합니다.</li>
+<li><b>“두 번째 표만 PNG로 만들어서 파일 경로를 알려 줘.”</b>라고 요청하세요. 여러 쪽으로 나뉘면 <code>table_image.paths</code>에 순서대로 들어 있습니다. 상대 경로는 응답의 <code>image_dir</code>를 기준으로 엽니다. 전체 표를 원하면 “모든 표를 PNG로 만들어 줘”라고 요청하세요.</li></ol>
+<h3>자동 생성되는 스키마는 어디에 쓰나요?</h3>
+<p>AI가 도구에 어떤 값을 보내야 하는지 알려 주는 명세를 <b>입력 스키마</b>라고 합니다. 엔진은 도구 함수의 인수와 타입에서 이 명세를 자동으로 만들고, MCP 클라이언트가 <code>tools/list</code>를 요청하면 각 도구의 <code>inputSchema</code>로 제공합니다. 일반 사용자는 채팅에 원하는 작업만 적으면 됩니다. 문서의 셀과 본문 내용은 파싱 결과 JSON에서 확인합니다.</p>
+<details><summary>표 이미지 도구의 스키마와 호출 예시 보기</summary>
+<p>자동 생성된 입력 스키마에서 표시용 제목을 생략한 예입니다. <code>doc_name</code>만 필수입니다.</p>
+<pre><code>{
+  "type": "object",
+  "required": ["doc_name"],
+  "properties": {
+    "doc_name": {"type": "string"},
+    "table_ids": {"anyOf": [{"type": "array", "items": {"type": "string"}}, {"type": "null"}], "default": null},
+    "list_only": {"type": "boolean", "default": false}
+  }
+}</code></pre>
+<p>다음은 표 하나를 받는 MCP 요청 예시입니다. 파일명과 표 ID는 앞에서 조회한 값으로 바꾸세요.</p>
+<pre><code>{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "extract_hwp_table_images",
+    "arguments": {"doc_name": "사업안내.hwp", "table_ids": ["s0/b2/t0"]}
+  }
+}</code></pre>
+<p>결과가 <code>partial</code>이면 <code>manifest_path</code>의 파일에서 각 표의 생성 여부와 사유를 확인하세요.</p></details>
+</html>
