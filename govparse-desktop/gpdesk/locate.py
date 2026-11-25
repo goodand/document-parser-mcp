@@ -24,6 +24,29 @@ _ATTR = re.compile(r'([\w:-]+)="([^"]*)"')
 class SvgImage:
     rect: tuple[float, float, float, float]
     sha256: str
+    data: bytes = field(default=b"", repr=False)
+    _pixels: str | None = field(default=None, repr=False)
+
+    @property
+    def pixels(self) -> str | None:
+        """Hash of the decoded picture (size + RGB samples), independent of the file format."""
+        if self._pixels is None:
+            self._pixels = pixel_hash(self.data) or ""
+        return self._pixels or None
+
+
+def pixel_hash(data: bytes) -> str | None:
+    try:
+        import pymupdf
+
+        pix = pymupdf.Pixmap(data)
+        if pix.alpha:
+            pix = pymupdf.Pixmap(pix, 0)
+        if pix.colorspace is None or pix.colorspace.n != 3:
+            pix = pymupdf.Pixmap(pymupdf.csRGB, pix)
+        return hashlib.sha256(f"{pix.width}x{pix.height}:".encode() + pix.samples).hexdigest()
+    except Exception:  # noqa: BLE001 - formats PyMuPDF cannot decode (wmf/emf) simply do not match
+        return None
 
 
 @dataclass
@@ -44,7 +67,7 @@ def parse_svg_page(svg: str) -> SvgPage:
             continue
         data = base64.b64decode(href.split(";base64,", 1)[1])
         x, y, w, h = (float(a.get(k, 0)) for k in ("x", "y", "width", "height"))
-        page.images.append(SvgImage((x, y, x + w, y + h), hashlib.sha256(data).hexdigest()))
+        page.images.append(SvgImage((x, y, x + w, y + h), hashlib.sha256(data).hexdigest(), data))
     for m in _TXT.finditer(svg):
         a = dict(_ATTR.findall(m.group(1)))
         ch = unescape(m.group(2))
@@ -76,12 +99,18 @@ def find_text_box(page: SvgPage, text: str, max_chars: int = 14):
     return (x0, y0, x1, y1)
 
 
-def locate(links, renderer, renderer_error: str | None = None, max_pages: int | None = None):
-    """Fill link.location in place. `renderer` is an rhwp Document (or None)."""
+def locate(links, renderer, renderer_error: str | None = None, max_pages: int | None = None,
+           asset_bytes: dict[str, bytes] | None = None):
+    """Fill link.location in place. `renderer` is an rhwp Document (or None).
+
+    asset_bytes (asset sha256 -> original bytes) enables a second, format-independent match on decoded
+    pixels: for an HWP source the picture list reads a Hancom-made HWPX copy while rhwp's SVG embeds
+    its own PNG, so the bytes differ even when the picture is the same.
+    """
     if renderer is None:
-        note = f"원본 화면 위치 미확인: 미리보기 렌더러가 문서를 열지 못함 ({(renderer_error or '')[:80]})"
+        note = f"원본 화면 위치 미확인: 미리보기 프로그램(rhwp)이 문서를 열지 못함 ({(renderer_error or '')[:80]})"
         for l in links:
-            l.location = {"verified": False, "note": note, "candidates": 0}
+            l.location = {"verified": False, "note": note, "candidates": 0, "candidate_pages": []}
         return
     pages = []
     n = renderer.page_count if max_pages is None else min(renderer.page_count, max_pages)
@@ -90,34 +119,45 @@ def locate(links, renderer, renderer_error: str | None = None, max_pages: int | 
             pages.append(parse_svg_page(renderer.render_svg(i)))
         except Exception:  # noqa: BLE001 - a page that fails to render proves nothing
             pages.append(None)
-    seen: dict[str, list[tuple[int, SvgImage]]] = {}
+    by_bytes: dict[str, list[tuple[int, SvgImage]]] = {}
     for i, p in enumerate(pages):
         for img in (p.images if p else []):
-            seen.setdefault(img.sha256, []).append((i, img))
+            by_bytes.setdefault(img.sha256, []).append((i, img))
+    by_pixels: dict[str, list[tuple[int, SvgImage]]] | None = None
     per_asset: dict[str | None, int] = {}
     for l in links:
         per_asset[l.occ.asset_sha256] = per_asset.get(l.occ.asset_sha256, 0) + 1
     for l in links:
         sha = l.occ.asset_sha256
-        hits = seen.get(sha, []) if sha else []
+        hits, match = (by_bytes.get(sha, []) if sha else []), "파일 바이트 일치"
+        if sha and not hits and asset_bytes and sha in asset_bytes:
+            if by_pixels is None:  # decode lazily, once, only when some picture needs it
+                by_pixels = {}
+                for i, p in enumerate(pages):
+                    for img in (p.images if p else []):
+                        if img.pixels:
+                            by_pixels.setdefault(img.pixels, []).append((i, img))
+            ph = pixel_hash(asset_bytes[sha])
+            hits, match = (by_pixels.get(ph, []) if ph else []), "픽셀 일치(파일 형식은 다름)"
+        candidate_pages = sorted({i for i, _ in hits})
         if not sha:
-            l.location = {"verified": False, "note": "원본 화면 위치 미확인: 그림 바이트 없음", "candidates": 0}
+            l.location = {"verified": False, "note": "원본 화면 위치 미확인: 그림 바이트 없음",
+                          "candidates": 0, "candidate_pages": []}
         elif len(hits) == 1 and per_asset[sha] == 1:
             i, img = hits[0]
             cap_box = None
-            for text in ([l.caption_text] if l.caption_text else []) + \
-                        [c.text for c in l.candidates if c.proposed][:1]:
+            for text in ([l.caption_text] if l.caption_text else []):   # only a real caption is boxed
                 cap_box = find_text_box(pages[i], text)
                 if cap_box:
                     break
-            l.location = {"verified": True, "page_index": i, "figure_box": img.rect,
+            l.location = {"verified": True, "page_index": i, "figure_box": img.rect, "match": match,
                           "caption_box": cap_box, "page_size": (pages[i].width, pages[i].height),
-                          "note": "렌더러 쪽 인덱스(인쇄 쪽번호 아님)" + ("" if cap_box else " · 설명 위치 미확인"),
-                          "candidates": 1}
+                          "note": "미리보기 기준 쪽 (인쇄된 쪽 번호와 다를 수 있음)" + ("" if cap_box else " · 설명 위치 미확인"),
+                          "candidates": 1, "candidate_pages": [i]}
         elif per_asset[sha] > 1:
-            l.location = {"verified": False, "candidates": len(hits),
-                          "note": f"원본 화면 위치 미확인: 같은 그림이 문서에서 재사용됨 (렌더 후보 {len(hits)}곳)"}
+            l.location = {"verified": False, "candidates": len(hits), "candidate_pages": candidate_pages,
+                          "note": f"원본 화면 위치 미확인: 같은 그림이 문서에서 재사용됨 (미리보기 후보 {len(hits)}곳)"}
         else:
-            l.location = {"verified": False, "candidates": len(hits),
-                          "note": "원본 화면 위치 미확인: 렌더 결과에서 그림을 찾지 못함" if not hits
-                          else f"원본 화면 위치 미확인: 렌더 후보 {len(hits)}곳"}
+            l.location = {"verified": False, "candidates": len(hits), "candidate_pages": candidate_pages,
+                          "note": "원본 화면 위치 미확인: 미리보기 화면에서 그림을 찾지 못함" if not hits
+                          else f"원본 화면 위치 미확인: 미리보기 후보 {len(hits)}곳"}

@@ -169,3 +169,72 @@ def test_summary_large_route(src, monkeypatch):
     s = dw.summary(src)
     assert s["builder"] == "gpdesk.owpml_ir" and s["pictures"] == 6 and s["nested_tables"] == 1
     assert "미리보기" in s["preview_note"]
+
+
+def test_json_export_reports_page_progress(src, tmp_path):
+    events = []
+    out = tmp_path / "o"
+    out.mkdir()
+    dw.run("json", src, out, ocr=False, progress=events.append)
+    stages = [e["stage"] for e in events]
+    assert stages[0] == "구조 읽기" and "표 찾기" in stages and stages[-1] == "저장"
+    pages = [e for e in events if e["stage"] == "표 찾기"]
+    assert pages[-1]["done"] == pages[-1]["total"] == 1
+    assert all(0 <= e.get("done", 0) <= e.get("total", 0) for e in events if "total" in e)
+
+
+def test_progress_line_format(capsys):
+    dw.emit_progress({"stage": "표 찾기", "done": 3, "total": 10})
+    err = capsys.readouterr().err.strip()
+    assert err.startswith("@@progress ") and json.loads(err[len("@@progress "):])["done"] == 3
+
+
+def test_native_stdout_noise_never_reaches_the_result(tmp_path):
+    """2026-11-25 TIPS export failed after 10 min: a native library wrote "svg ..." straight to fd 1,
+    so the GUI could not parse the result JSON. Anything written to fd 1 during work must go to stderr."""
+    import subprocess
+    import sys
+    code = "\n".join([
+        "import os, sys",
+        "from gpdesk import desktop_worker as dw",
+        "def noisy(argv):",
+        "    os.write(1, b'svg: native warning written to fd 1' + bytes([10]))",
+        "    print('python print during work')",
+        "    return {'ok': True}",
+        "sys.exit(dw.protected_main(noisy, sys.argv[1:]))",
+    ])
+    root = Path(__file__).resolve().parents[1]
+    r = subprocess.run([sys.executable, "-c", code, "x"], cwd=root, capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == {"ok": True}
+    assert "native warning" in r.stderr and "python print" in r.stderr
+
+
+def test_pad_for_ocr_shrinks_large_pictures(tmp_path):
+    """Measured 2026-11-25: a 2154x477 logo read as '소 / ㅇ'; scaled to <=1200 px wide it read correctly."""
+    import pymupdf
+
+    doc = pymupdf.open()
+    page = doc.new_page(width=1600, height=360)
+    big = tmp_path / "big.png"
+    page.get_pixmap(dpi=144).save(str(big))  # 3200 x 720
+    out = dw.pad_for_ocr(big, tmp_path / "pad")
+    p = pymupdf.Pixmap(str(out))
+    assert max(p.width, p.height) <= dw.OCR_MAX_SIDE + 2 * dw.OCR_PAD
+    small = tmp_path / "small.png"
+    pymupdf.open().new_page(width=200, height=60).get_pixmap().save(str(small))
+    q = pymupdf.Pixmap(str(dw.pad_for_ocr(small, tmp_path / "pad2")))
+    assert (q.width, q.height) == (200 + 2 * dw.OCR_PAD, 60 + 2 * dw.OCR_PAD)  # small ones are not resized
+
+
+@pytest.mark.live
+def test_ocr_reads_large_logo_text(tmp_path):
+    import pymupdf
+
+    doc = pymupdf.open()
+    page = doc.new_page(width=1080, height=240)
+    page.insert_font(fontname="mg", fontfile=r"C:\Windows\Fonts\malgun.ttf")
+    page.insert_text((60, 150), "중소벤처기업부", fontname="mg", fontsize=96)
+    png = tmp_path / "logo.png"
+    page.get_pixmap(dpi=144).save(str(png))  # 2160 x 480, text close to the size of the real logo
+    assert "중소벤처기업부" in "".join(dw.ocr(png)["texts"]).replace(" ", "")

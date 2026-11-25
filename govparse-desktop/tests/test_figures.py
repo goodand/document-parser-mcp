@@ -64,8 +64,10 @@ def test_auto_links_only_explicit(doc):
     assert st[0] == "auto_explicit" and links[0].caption_text == "<그림 A> 사업 구성도"
     assert all(s == "needs_review" for s in st[1:])
     # suggested, never confirmed: numbered label below the pair
-    assert links[1].candidates[0].text == "<그림 B> 두 그림의 공통 설명"
-    assert links[1].candidates[0].kind == "numbered_label"
+    # no recommendation (2026-11-25: the format-only ★ rule was mostly wrong on TIPS): nearest sentence first
+    assert all(not c.proposed for l in links for c in l.candidates)
+    assert [c.distance for c in links[1].candidates] == sorted(c.distance for c in links[1].candidates)
+    assert "<그림 B> 두 그림의 공통 설명" in [c.text for c in links[1].candidates]
     # markers and file names are shown as excluded, not proposed as captions
     kinds4 = {c.text: c.kind for c in links[3].candidates}
     assert kinds4["그림입니다."] == "figure_marker" and kinds4["photo_0042.png"] == "file_name"
@@ -84,7 +86,7 @@ def test_wrong_auto_and_unresolved_counts(doc):
 def test_decisions_share_none_undo_and_persist(doc, occ, tmp_path):
     sha = hashlib.sha256(FIX.read_bytes()).hexdigest()
     store = DecisionStore(tmp_path / "d", sha)
-    cap = link_figures(doc, store)[1].candidates[0].para_ref
+    cap = [c for c in link_figures(doc, store)[1].candidates if c.text.startswith("<그림 B>")][0].para_ref
     store.share([occ[1].occ_id, occ[2].occ_id], [cap])
     store.mark_none(occ[3].occ_id)
     store.link(occ[4].occ_id, [cap])
@@ -131,7 +133,7 @@ def test_frame_table_picture_looks_outside_the_frame(doc):
     l = link_figures(doc, DecisionStore.memory(doc.source_sha256))[5]
     assert l.status == "needs_review"
     top = l.candidates[0]
-    assert top.text == "<그림 C> 틀 표 속 그림" and top.proposed and top.position == "before_frame"
+    assert top.text == "<그림 C> 틀 표 속 그림" and not top.proposed and top.position == "before_frame"
 
 
 def test_decision_file_rejects_other_schema_or_bad_entries(doc, occ, tmp_path):
@@ -150,3 +152,21 @@ def test_decision_file_rejects_other_schema_or_bad_entries(doc, occ, tmp_path):
     data["schema_version"] = 99
     store.path.write_text(json.dumps(data), "utf-8")
     assert DecisionStore(tmp_path / "d", doc.source_sha256).decisions == {}
+
+
+def test_caption_from_ocr_or_typed_text(doc, occ, tmp_path):
+    """A person may set the caption from the picture's OCR text or type it; both are kept apart from source text."""
+    store = DecisionStore(tmp_path / "d", doc.source_sha256)
+    store.set_text(occ[5].occ_id, "사업 추진 체계 2026", origin="ocr")
+    store.set_text(occ[4].occ_id, "  본문 그림: 직접 입력한 설명  ", origin="typed")
+    store.save()
+    links = link_figures(doc, DecisionStore(tmp_path / "d", doc.source_sha256))
+    assert links[5].status == "user_linked" and links[5].caption_text == "사업 추진 체계 2026"
+    assert links[5].evidence == "그림 OCR 결과로 지정" and links[5].caption_refs == []
+    assert links[4].caption_text == "본문 그림: 직접 입력한 설명" and links[4].evidence == "직접 입력"
+
+
+def test_empty_typed_caption_is_rejected(doc, occ):
+    store = DecisionStore.memory(doc.source_sha256)
+    with pytest.raises(ValueError):
+        store.set_text(occ[4].occ_id, "   ", origin="typed")

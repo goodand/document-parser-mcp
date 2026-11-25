@@ -188,14 +188,50 @@ def preview(path: Path, png: Path, page: int) -> tuple[int, str]:
 
 def _notes_for_builder(src: Source) -> list[str]:
     if src.doc is None:
-        return ["미리보기 렌더러가 문서를 열지 못해 원본 XML에서 직접 구조를 읽었습니다 (" + (src.error or "")[:80] + ")"]
+        return ["미리보기 프로그램(rhwp)이 문서를 열지 못해 원본 XML에서 직접 구조를 읽었습니다 (" + (src.error or "")[:80] + ")"]
     return []
 
 
-def run(mode: str, path: Path, out: Path, ocr: bool = False) -> dict:
+def emit_progress(event: dict) -> None:
+    """One machine-readable line on stderr; the GUI shows it in the status strip."""
+    sys.stderr.write("@@progress " + json.dumps(event, ensure_ascii=False) + "\n")
+    sys.stderr.flush()
+
+
+# Per-page rendering for rhwp documents: lets the table search report progress page by page
+# instead of waiting for one whole-document render_pdf() call (13 min for 1,182 pages).
+PER_PAGE_SVG = True
+
+
+def _table_pages(src: "Source", progress):
+    """Yield (page number, PyMuPDF page) for the table search, reporting progress."""
+    import pymupdf
+
+    if src.doc is not None and PER_PAGE_SVG:
+        n = src.doc.page_count
+        for i in range(n):
+            progress({"stage": "표 찾기", "done": i, "total": n, "detail": "쪽을 그리며 표를 찾는 중"})
+            svg = src.doc.render_svg(i).encode("utf-8")
+            with pymupdf.open(stream=svg, filetype="svg") as one:
+                pdf = pymupdf.open(stream=one.convert_to_pdf(), filetype="pdf")
+            yield i + 1, pdf[0]
+        progress({"stage": "표 찾기", "done": n, "total": n})
+        return
+    progress({"stage": "쪽 그리기", "detail": "한컴 PDF 재사용" if src.doc is None else "전체 문서를 한 번에 그리는 중"})
+    pdf = pymupdf.open(stream=src.pdf_bytes(), filetype="pdf")
+    n = pdf.page_count
+    for i, page in enumerate(pdf):
+        progress({"stage": "표 찾기", "done": i, "total": n})
+        yield i + 1, page
+    progress({"stage": "표 찾기", "done": n, "total": n})
+
+
+def run(mode: str, path: Path, out: Path, ocr: bool = False, progress=lambda e: None) -> dict:
+    progress({"stage": "구조 읽기"})
     src = Source(path)
     ir = src.ir()
     assets = src.asset_bytes(ir)
+    progress({"stage": "그림 연결"})
     figs = _link_figures(src, ir)
     notes = _notes_for_builder(src)
     if figs.get("mismatch"):
@@ -214,15 +250,14 @@ def run(mode: str, path: Path, out: Path, ocr: bool = False) -> dict:
 
             cap_dir = out / ".captures"
             cap_dir.mkdir()
-            with pymupdf.open(stream=src.pdf_bytes(), filetype="pdf") as pdf:
-                for page in pdf:
-                    for i, t in enumerate(page.find_tables().tables):
-                        f = cap_dir / f"p{page.number + 1:04d}_t{i}.png"
-                        page.get_pixmap(clip=t.bbox, dpi=160).save(str(f))
-                        captures.append((page.number + 1, f))
+            for no, page in _table_pages(src, progress):
+                for i, t in enumerate(page.find_tables().tables):
+                    f = cap_dir / f"p{no:04d}_t{i}.png"
+                    page.get_pixmap(clip=t.bbox, dpi=160).save(str(f))
+                    captures.append((no, f))
             state = "ok" if captures else "none_detected"
         except Exception as e:  # noqa: BLE001
-            notes.append(f"표 캡처 미확인: 렌더 PDF를 만들지 못함 ({str(e)[:120]})")
+            notes.append(f"표 캡처 미확인: 미리보기 PDF를 만들지 못함 ({str(e)[:120]})")
         emb = {}
         for key, data in assets.items():
             m = re.search(r"(\d+)$", key)
@@ -232,6 +267,7 @@ def run(mode: str, path: Path, out: Path, ocr: bool = False) -> dict:
             m = re.search(r"(\d+)$", (n.get("image") or {}).get("uri", ""))
             if m and int(m.group(1)) in emb:
                 n["asset"] = f"assets/embedded/bin{m.group(1)}{Path(emb[int(m.group(1))][0]).suffix}"
+        progress({"stage": "저장"})
         summary = build_json_bundle(out, ir, Path(path).name, rep["source_sha256"], captures=captures,
                                     capture_state=state, embedded=emb, ocr={})
         shutil.rmtree(out / ".captures", ignore_errors=True)
@@ -240,8 +276,9 @@ def run(mode: str, path: Path, out: Path, ocr: bool = False) -> dict:
         hwpx = out / "document.hwpx"
         restore = restore_with_figures(ir, assets, hwpx)
         verify = verify_restored(hwpx, expected_pictures=len(_pictures(ir)))
-        notes += ["앱 미리보기는 표의 행 높이를 다시 계산하지 않아 그림이 겹쳐 보일 수 있습니다. 한글에서 열면 행이 늘어납니다.",
-                  "복원 범위: 본문 문단·중첩 표·그림·원문 캡션",
+        if mode == "hwpx":  # Hancom recomputes row heights when it saves HWP, so this only applies to HWPX
+            notes.append("앱 미리보기는 표의 행 높이를 다시 계산하지 않아 그림이 겹쳐 보일 수 있습니다. 한글에서 열면 행이 늘어납니다.")
+        notes += ["복원 범위: 본문 문단·중첩 표·그림·원문 캡션",
                   "원본 글꼴·문단 서식·쪽 배치는 복원하지 않음(행 높이 고정)",
                   "사용자가 정한 연결은 document.links.json 에만 기록"]
         rep.update(restore=restore, verify=verify, saved=verify["ok"])
@@ -349,7 +386,7 @@ def summary(path: Path) -> dict:
 
     walk(ir.get("body"), 0)
     note = ("rhwp로 쪽을 바로 그립니다." if src.doc is not None else
-            "미리보기 렌더러가 이 문서를 열지 못해 한컴으로 전체 문서를 PDF로 바꾼 뒤 표시합니다. 큰 문서는 수 분 걸립니다.")
+            "미리보기 프로그램(rhwp)이 이 문서를 열지 못해 한컴으로 전체 문서를 PDF로 바꾼 뒤 표시합니다. 큰 문서는 수 분 걸립니다.")
     return {**counts, "builder": src.builder, "source_sha256": _sha(path), "preview_note": note,
             "seconds": round(time.time() - t0, 1)}
 
@@ -391,6 +428,7 @@ def index(json_path: Path) -> dict:
 
 
 OCR_PAD = 60  # px of white margin; measured: text touching the picture border is cut by the detector
+OCR_MAX_SIDE = 1000  # px; measured: a 2154x477 logo read as "소/ㅇ", the same logo at <=1200 px read correctly
 
 
 def pad_for_ocr(image: Path, out_dir: Path) -> Path:
@@ -403,9 +441,11 @@ def pad_for_ocr(image: Path, out_dir: Path) -> Path:
         if flat.alpha:
             flat = pymupdf.Pixmap(flat, 0)  # drop alpha
         src = flat
+    k = min(1.0, OCR_MAX_SIDE / max(src.width, src.height))  # shrink large pictures only
+    w, h = round(src.width * k), round(src.height * k)
     doc = pymupdf.open()
-    page = doc.new_page(width=src.width + 2 * OCR_PAD, height=src.height + 2 * OCR_PAD)
-    page.insert_image(pymupdf.Rect(OCR_PAD, OCR_PAD, OCR_PAD + src.width, OCR_PAD + src.height), pixmap=src)
+    page = doc.new_page(width=w + 2 * OCR_PAD, height=h + 2 * OCR_PAD)
+    page.insert_image(pymupdf.Rect(OCR_PAD, OCR_PAD, OCR_PAD + w, OCR_PAD + h), pixmap=src)
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / (Path(image).stem + ".png")
     page.get_pixmap(alpha=False).save(str(out))
@@ -413,48 +453,69 @@ def pad_for_ocr(image: Path, out_dir: Path) -> Path:
 
 
 def ocr(png: Path) -> dict:
-    """OCR one picture with the engine's local RapidOCR (Korean model)."""
-    try:
-        from .config import load
+    """OCR one picture with the engine chosen in Settings (after the size/margin preprocessing)."""
+    from . import ocr_engines
 
-        cfg = load()
-    except Exception as e:  # noqa: BLE001
-        return {"status": "not_available", "texts": [], "error": f"OCR 엔진을 찾지 못함: {e}"}
-    if not cfg.ocr_models:
-        return {"status": "not_available", "texts": [], "error": "OCR 모델 폴더 없음"}
     work = Path(tempfile.mkdtemp(prefix="gpocr-"))
-    out = work / "r.json"
     try:
         png = pad_for_ocr(Path(png), work / "pad")
     except Exception:  # noqa: BLE001 - unreadable by PyMuPDF: let the OCR engine try the original
         pass
-    r = runner.run([str(cfg.engine_python), str(HERE / "ocr_tool.py"), str(cfg.ocr_models), str(out), str(png)],
-                   timeout=180, env=dict(os.environ, PYTHONUTF8="1"))
-    if not out.exists():
-        return {"status": "failed", "texts": [], "error": (r.stderr or "결과 없음")[-300:]}
-    return json.loads(out.read_text("utf-8")).get(Path(png).name, {"status": "failed", "texts": []})
+    return ocr_engines.run(png)
 
 
-def main(argv: list[str]) -> int:
+def _dispatch(argv: list[str]):
+    """Do the work for one mode and return what the GUI should read (str or JSON-able)."""
     mode = argv[0]
     if mode == "preview":
         count, renderer = preview(Path(argv[1]), Path(argv[2]), int(argv[3]) if len(argv) > 3 else 0)
-        print(f"{count}|{renderer}")
-    elif mode == "convert":
-        print(json.dumps(convert(Path(argv[1]), Path(argv[2]), argv[3]), ensure_ascii=False, default=str))
-    elif mode == "summary":
-        print(json.dumps(summary(Path(argv[1])), ensure_ascii=False))
-    elif mode == "index":
-        print(json.dumps(index(Path(argv[1])), ensure_ascii=False))
-    elif mode == "ocr":
-        print(json.dumps(ocr(Path(argv[1])), ensure_ascii=False))
-    elif mode == "serve":
+        return f"{count}|{renderer}"
+    if mode == "convert":
+        return convert(Path(argv[1]), Path(argv[2]), argv[3])
+    if mode == "summary":
+        return summary(Path(argv[1]))
+    if mode == "index":
+        return index(Path(argv[1]))
+    if mode == "ocr":
+        return ocr(Path(argv[1]))
+    if mode in ("settings", "settings-set"):
+        from . import ocr_engines, settings
+
+        if mode == "settings-set":
+            settings.update(**{argv[1]: argv[2]})
+        return {"settings": settings.load(), "engines": ocr_engines.list_engines(),
+                "path": str(settings.settings_path())}
+    return run(mode, Path(argv[1]), Path(argv[2]), progress=emit_progress)
+
+
+def _claim_stdout():
+    """Point fd 1 at stderr for the rest of the process and return a stream on the real stdout.
+
+    Native libraries (MuPDF, rhwp) write warnings straight to fd 1; Python-level redirection does not
+    catch those. Only the final result is written to the returned stream.
+    """
+    sys.stdout.flush()
+    real = os.fdopen(os.dup(1), "w", encoding="utf-8", newline="\n")
+    os.dup2(2, 1)
+    sys.stdout = sys.stderr
+    return real
+
+
+def protected_main(work, argv: list[str]) -> int:
+    real = _claim_stdout()
+    result = work(argv)
+    real.write(result if isinstance(result, str) else json.dumps(result, ensure_ascii=False, default=str))
+    real.write("\n")
+    real.flush()
+    return 0
+
+
+def main(argv: list[str]) -> int:
+    if argv[0] == "serve":
         from .figure_service import serve
 
-        return serve(decisions_root())
-    else:
-        print(json.dumps(run(mode, Path(argv[1]), Path(argv[2])), ensure_ascii=False, default=str))
-    return 0
+        return serve(decisions_root(), reply_to=_claim_stdout())
+    return protected_main(_dispatch, argv)
 
 
 if __name__ == "__main__":

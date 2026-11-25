@@ -11,6 +11,7 @@ All outputs (review panel, JSON+PNG, HTML) read the same figures.json.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 import traceback
@@ -34,6 +35,22 @@ def _thumb(data: bytes, dst: Path, width: int = 96) -> bool:
         return True
     except Exception:  # noqa: BLE001 - unsupported formats (wmf/emf) get no thumbnail
         return False
+
+
+_FORMATS = ((b"\x89PNG", "PNG"), (b"\xff\xd8", "JPG"), (b"GIF8", "GIF"), (b"BM", "BMP"),
+            (b"\x01\x00\x00\x00", "EMF"), (b"\xd7\xcd\xc6\x9a", "WMF"))
+
+
+def _source_kind(o, data: bytes | None) -> str:
+    """What the document itself says: picture format (from the bytes) and where it is placed."""
+    fmt = next((name for sig, name in _FORMATS if data and data.startswith(sig)), None)
+    if fmt is None:
+        ext = Path(o.asset_path or "").suffix.lstrip(".").upper()
+        fmt = ext or "형식 미상"
+    where = "본문" if not o.path else ("표 안 (중첩 표)" if len(o.path) > 1 else "표 안")
+    if o.in_group:
+        where += " · 묶음 개체 안"
+    return f"그림({fmt}) · {where}"
 
 
 class FigureService:
@@ -72,6 +89,7 @@ class FigureService:
             self.note = "HWP 원본 · 한컴이 만든 HWPX 변환본에서 그림 위치를 읽었습니다. 원본은 수정하지 않습니다."
         self.store = DecisionStore(self.decisions_root, self.doc.source_sha256)
         self._renderer, self.renderer_error = None, None
+        self._locations = None  # occ_id -> location; depends only on the document, not on captions
         try:
             import rhwp
 
@@ -81,7 +99,13 @@ class FigureService:
 
     def _write(self) -> Path:
         links = link_figures(self.doc, self.store)
-        locate(links, self._renderer, self.renderer_error)
+        if self._locations is None:  # rendering every page is slow (TIPS ~20 s); do it once per open
+            by_sha = {hashlib.sha256(b).hexdigest(): b for b in self.doc.asset_bytes.values()}
+            locate(links, self._renderer, self.renderer_error, asset_bytes=by_sha)
+            self._locations = {l.occ.occ_id: l.location for l in links}
+        else:
+            for l in links:
+                l.location = self._locations.get(l.occ.occ_id, l.location)
         thumbs = self.out / "thumbs"
         thumbs.mkdir(exist_ok=True)
         full = self.out / "assets"
@@ -100,6 +124,7 @@ class FigureService:
                 if not f.exists():
                     f.write_bytes(data)
                 row["asset_file"] = str(f)
+            row["source_kind"] = _source_kind(o, data)
             row["path_text"] = " → ".join(
                 ("표" if i == 0 else "안쪽 표") + f" {s.row + 1}행 {s.col + 1}열 칸"
                 + (" (병합된 칸)" if s.row_span * s.col_span > 1 else "")
@@ -137,6 +162,9 @@ class FigureService:
                     self.store.undo()
                 elif a == "share":
                     self.store.share(ids, refs)
+                elif a == "text":
+                    for oid in ids:
+                        self.store.set_text(oid, cmd.get("text", ""), cmd.get("origin", "typed"))
                 else:
                     for oid in ids:
                         {"link": lambda o: self.store.link(o, refs),
@@ -150,9 +178,12 @@ class FigureService:
             return {"ok": False, "error": str(e), "trace": traceback.format_exc()[-800:]}
 
 
-def serve(decisions_root: Path) -> int:
+def serve(decisions_root: Path, reply_to=None) -> int:
+    """reply_to: stream on the real stdout. desktop_worker passes one after moving fd 1 to stderr,
+    so native libraries cannot corrupt the reply stream either."""
     svc = FigureService(decisions_root)
-    reply_to = sys.stdout
+    if reply_to is None:
+        reply_to = sys.stdout
     sys.stdout = sys.stderr  # stray library prints must never corrupt the reply stream
     while True:
         line = sys.stdin.readline()  # readline: answer each line without waiting for EOF

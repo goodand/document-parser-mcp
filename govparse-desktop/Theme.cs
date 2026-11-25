@@ -158,18 +158,30 @@ class Worker {
         var p = Process.Start(info); lock (live) live.Add(p); return p;
     }
     // Blocking: call from Task.Run. Throws OperationCanceledException if the process was killed by Cancel.
-    public string Run(string args, int timeoutMs, Action<Process> started = null) {
+    // progress: called (on a worker thread) for every "@@progress {json}" line the worker writes to stderr.
+    public string Run(string args, int timeoutMs, Action<Process> started = null, Action<Dictionary<string, object>> progress = null) {
         using (var proc = Start(args)) {
             if (started != null) started(proc);
             try {
-                var err = proc.StandardError.ReadToEndAsync(); var res = proc.StandardOutput.ReadToEndAsync();
+                var errLines = new List<string>(); var ser = new System.Web.Script.Serialization.JavaScriptSerializer();
+                var err = Task.Run(() => {
+                    string line;
+                    while ((line = proc.StandardError.ReadLine()) != null) {
+                        if (line.StartsWith("@@progress ")) {
+                            if (progress != null) try { progress(ser.Deserialize<Dictionary<string, object>>(line.Substring(11))); } catch { }
+                        } else if (line.Trim().Length > 0) lock (errLines) errLines.Add(line);
+                    }
+                });
+                var res = proc.StandardOutput.ReadToEndAsync();
                 if (!proc.WaitForExit(timeoutMs)) { Kill(proc); throw new TimeoutException("처리 제한 시간을 초과했습니다."); }
                 Task.WaitAll(err, res);
                 if (proc.ExitCode != 0) {
                     if (cancelled.Remove(proc.Id)) throw new OperationCanceledException();
-                    var lines = err.Result.Trim().Split('\n'); throw new Exception(lines[lines.Length - 1].Trim());
+                    throw new Exception(errLines.Count > 0 ? errLines[errLines.Count - 1].Trim() : "작업이 실패했습니다 (종료 코드 " + proc.ExitCode + ")");
                 }
-                return res.Result.Trim();
+                // the result is the last non-empty line; anything a library printed before it is ignored
+                var outLines = res.Result.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToArray();
+                return outLines.Length > 0 ? outLines[outLines.Length - 1] : "";
             } finally { lock (live) live.Remove(proc); }
         }
     }
@@ -201,30 +213,66 @@ static class HancomGuard {
     }
 }
 
+// Copies a picture file to the clipboard (as an image, and as a file for Explorer / mail).
+static class PictureClipboard {
+    // Returns a status message; ok=false when the file is missing or Windows cannot read the format.
+    public static string Copy(string file, out bool ok) {
+        ok = false;
+        if (String.IsNullOrEmpty(file) || !File.Exists(file)) return "이 그림은 원본 파일이 없어 복사할 수 없습니다.";
+        try {
+            using (var img = Image.FromFile(file)) using (var bmp = new Bitmap(img.Width, img.Height)) {
+                using (var g = Graphics.FromImage(bmp)) { g.Clear(Color.White); g.DrawImage(img, 0, 0, img.Width, img.Height); }   // transparency -> white
+                var data = new DataObject();
+                data.SetImage(bmp);
+                data.SetFileDropList(new System.Collections.Specialized.StringCollection { file });
+                Clipboard.SetDataObject(data, true);
+                ok = true;
+                return String.Format("그림을 복사했습니다 ({0}×{1}). 문서나 메일에 붙여 넣을 수 있습니다.", img.Width, img.Height);
+            }
+        } catch (Exception ex) { return "이 그림 형식은 복사하지 못했습니다 · " + ex.Message; }
+    }
+    // Ctrl+C and right-click "그림 복사" on a list; fileOf gives the selected item's picture file.
+    public static void Attach(ListView list, Func<string> fileOf, Action<string, bool> report) {
+        var menu = new ContextMenuStrip();
+        menu.Items.Add(new ToolStripMenuItem("그림 복사", null, (s, e) => { bool ok; var m = Copy(fileOf(), out ok); report(m, ok); }) { ShortcutKeyDisplayString = "Ctrl+C" });
+        list.ContextMenuStrip = menu;
+        list.MouseDown += (s, e) => {
+            if (e.Button != MouseButtons.Right) return;
+            var hit = list.HitTest(e.Location).Item;
+            if (hit != null && !hit.Selected) { list.SelectedItems.Clear(); hit.Selected = true; }
+        };
+        list.KeyDown += (s, e) => { if (e.Control && e.KeyCode == Keys.C) { bool ok; var m = Copy(fileOf(), out ok); report(m, ok); e.Handled = true; e.SuppressKeyPress = true; } };
+    }
+}
+
 // OCR for one selected picture, with copy. Shared by the figure panel and the result panel.
 class OcrBox : Panel {
     readonly Worker worker; readonly Func<string> imagePath;
     readonly TextBox text = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, BackColor = Color.White, BorderStyle = BorderStyle.FixedSingle };
-    readonly Label state = new Label { AutoSize = true, ForeColor = Theme.Muted, Padding = new Padding(6, 9, 0, 0) };
+    readonly Label state = new Label { Dock = DockStyle.Top, Height = Theme.Px(22), AutoEllipsis = true, ForeColor = Theme.Muted, Padding = new Padding(6, 3, 6, 0) };   // own line: result count + engine
     readonly AxButton run = new AxButton("이 그림 OCR", AxKind.Secondary), copy = new AxButton("텍스트 복사", AxKind.Secondary);
     readonly Dictionary<string, string[]> cache = new Dictionary<string, string[]>();
+    readonly FlowLayoutPanel bar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = Theme.Px(42), BackColor = Theme.Surface };
     int ticket;
     public OcrBox(Worker worker, Func<string> imagePath) {
         this.worker = worker; this.imagePath = imagePath; Height = Theme.Px(150); BackColor = Theme.Surface; Font = Theme.Body; text.Font = Theme.Body;
-        var bar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = Theme.Px(42), BackColor = Theme.Surface };
-        bar.Controls.Add(run); bar.Controls.Add(copy); bar.Controls.Add(state);
-        Controls.Add(text); Controls.Add(bar); copy.Enabled = false;
+        bar.Controls.Add(run); bar.Controls.Add(copy);
+        Controls.Add(text); Controls.Add(state); Controls.Add(bar); copy.Enabled = false;
         text.AccessibleName = "OCR 결과 텍스트";
         run.Click += async (s, e) => await RunOcr();
         copy.Click += (s, e) => { if (text.Text.Length > 0) { Clipboard.SetText(text.Text); state.Text = "클립보드에 복사했습니다 (" + text.Text.Length + "자)"; state.ForeColor = Theme.Ok; } };
     }
     // Call when the selection changes: shows a cached result or the "not run" state.
+    public string Result { get { return text.Text.Trim(); } }   // current OCR text (empty if not run)
+    readonly List<AxButton> extra = new List<AxButton>();
+    public void AddAction(AxButton b) { extra.Add(b); bar.Controls.Add(b); }   // e.g. 설명 칸에 넣기, kept with the OCR buttons
+    public event Action ResultChanged;
     public void Show(string[] known = null) {
         ticket++; string path = imagePath(); string[] r = known;
         if (r == null && path != null) cache.TryGetValue(path, out r);
         run.Enabled = !String.IsNullOrEmpty(path) && File.Exists(path);
         if (r == null) { text.Text = ""; copy.Enabled = false; state.ForeColor = Theme.Muted; state.Text = run.Enabled ? "OCR 미실행" : "선택한 그림의 파일이 없습니다"; return; }
-        text.Text = String.Join("\r\n", r); copy.Enabled = r.Length > 0; state.ForeColor = Theme.Muted; state.Text = r.Length > 0 ? "OCR 결과 " + r.Length + "줄 (그림 안 글자 · 설명 아님)" : "OCR 결과 없음 (빈 결과)";
+        text.Text = String.Join("\r\n", r); copy.Enabled = r.Length > 0; if (ResultChanged != null) ResultChanged(); state.ForeColor = Theme.Muted; state.Text = r.Length > 0 ? "OCR 결과 " + r.Length + "줄 (그림 안 글자 · 설명 아님)" : "OCR 결과 없음 (빈 결과)";
     }
     async Task RunOcr() {
         string path = imagePath(); if (String.IsNullOrEmpty(path)) return; int mine = ++ticket;
@@ -235,7 +283,7 @@ class OcrBox : Panel {
             string st = (string)d["status"]; var lines = ((System.Collections.ArrayList)d["texts"]).Cast<string>().ToArray();
             if (st == "ok" || st == "empty") cache[path] = lines;
             if (mine != ticket) return;      // selection moved on: keep result cached, do not overwrite the box
-            if (st == "ok" || st == "empty") Show(lines);
+            if (st == "ok" || st == "empty") { Show(lines); if (d.ContainsKey("engine_label")) state.Text += " · " + d["engine_label"]; }
             else { text.Text = ""; copy.Enabled = false; state.ForeColor = Theme.Warn; state.Text = (st == "not_available" ? "OCR 사용 불가 · " : "OCR 실패 · ") + d["error"]; }
         } catch (Exception ex) { if (mine == ticket) { state.ForeColor = Theme.Warn; state.Text = "OCR 실패 · " + ex.Message; } }
         finally { if (mine == ticket) run.Enabled = true; }

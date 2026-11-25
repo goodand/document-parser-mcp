@@ -40,8 +40,8 @@ shutil.copytree(base/'gpdesk',site/'gpdesk',ignore=shutil.ignore_patterns('__pyc
 csc=r'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 def compile(file,out,extra):
     files=[file] if isinstance(file,str) else list(file)
-    subprocess.run([csc,'/nologo','/target:winexe','/platform:x64','/codepage:65001','/r:System.Windows.Forms.dll','/r:System.Drawing.dll','/r:System.Web.Extensions.dll','/r:System.Core.dll','/r:System.Management.dll',*extra,'/out:'+str(out),*[str(base/f) for f in files]],check=True)
-compile(['Desktop.cs','FigurePanel.cs','Theme.cs'],stage/'GovParse Desktop.exe',[])
+    subprocess.run([csc,'/nologo','/target:winexe','/platform:x64','/codepage:65001','/r:System.Windows.Forms.dll','/r:System.Drawing.dll','/r:System.Web.Extensions.dll','/r:System.Core.dll','/r:System.Management.dll','/r:Microsoft.CSharp.dll',*extra,'/out:'+str(out),*[str(base/f) for f in files]],check=True)
+compile(['Desktop.cs','FigurePanel.cs','Theme.cs','SettingsForm.cs'],stage/'GovParse Desktop.exe',[])
 release=base/'dist'
 release.mkdir(exist_ok=True)
 payload=base/'build/payload.zip'

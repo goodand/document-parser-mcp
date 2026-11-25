@@ -94,6 +94,11 @@ class PageView : Panel {
 
 class Desktop : Form {
     [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
+    [DllImport("user32.dll")] static extern bool AllowSetForegroundWindow(int pid);
+    static void Launch(string file, string args = null) {
+        AllowSetForegroundWindow(-1);   // ASFW_ANY: the app we start may come to the front
+        if (args == null) Process.Start(file); else Process.Start(file, args);
+    }
     readonly string root = AppDomain.CurrentDomain.BaseDirectory;
     readonly Worker worker;
     readonly JavaScriptSerializer json = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
@@ -126,7 +131,8 @@ class Desktop : Form {
     readonly Label stExport = new Label { AutoSize = true, Padding = new Padding(0, 7, 10, 0) };
     readonly ProgressBar busyBar = new ProgressBar { Style = ProgressBarStyle.Marquee, MarqueeAnimationSpeed = 30, Width = 90, Height = 8, Visible = false, Margin = new Padding(6, 12, 6, 0) };
     readonly Timer tick = new Timer { Interval = 1000 };
-    DateTime? structStart, previewStart, exportStart; string structDone, exportStep, previewRoute = "";
+    DateTime? structStart, previewStart, exportStart, stageStart; string structDone, exportStep, previewRoute = "", exportStage = "";
+    int stageDone = -1, stageTotal = 0;
     int jobId; bool showingResult; Process exportProc;
 
     public Desktop() {
@@ -148,8 +154,10 @@ class Desktop : Form {
         top.Controls.Add(new Label { Text = "GovParse Desktop", Font = Theme.Title, AutoSize = true, Padding = new Padding(10, 9, 4, 0) });
         top.Controls.Add(tabOrig); top.Controls.Add(tabResult);
         var open = new AxButton("파일 열기", AxKind.Secondary); var load = new AxButton("결과 불러오기", AxKind.Secondary); var help = new AxButton("설명서", AxKind.Ghost);
-        top.Controls.Add(open); top.Controls.Add(load); top.Controls.Add(help); top.Controls.Add(fileName);   // file name last, so buttons never shift
+        var settingsBtn = new AxButton("설정", AxKind.Ghost);
+        top.Controls.Add(open); top.Controls.Add(load); top.Controls.Add(settingsBtn); top.Controls.Add(help); top.Controls.Add(fileName);   // file name last, so buttons never shift
         open.Click += (s, e) => Pick(); load.Click += async (s, e) => await LoadResult();
+        settingsBtn.Click += (s, e) => { using (var f = new SettingsForm(worker)) if (f.ShowDialog(this) == DialogResult.OK) Say("OCR 엔진을 바꿨습니다 · " + f.SavedLabel, Theme.Ok); };
         help.Click += (s, e) => { try { Process.Start(Path.Combine(root, "manual.html")); } catch { } };
         tabOrig.Click += (s, e) => SwitchTab(false); tabResult.Click += (s, e) => SwitchTab(true);
 
@@ -184,11 +192,13 @@ class Desktop : Form {
         // ── result side panel ───────────────────────────────────────────────────────────
         var side = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Surface };
         resTitle.Font = Theme.Strong; resTitle.Height = Theme.Px(34); resState.Height = Theme.Px(48); resNotes.Height = Theme.Px(120); resNotes.Font = Theme.Small;
-        assets.Columns.Add("자산", Theme.Px(150)); assets.Columns.Add("출처", Theme.Px(110)); assets.Columns.Add("위치 / 설명", Theme.Px(260));
+        assets.Columns.Add("자산", Theme.Px(110)); assets.Columns.Add("출처", Theme.Px(80)); assets.Columns.Add("위치 / 설명", Theme.Px(280)); assets.Columns.Add("원본 파일", Theme.Px(200));
         assets.SelectedIndexChanged += (s, e) => SelectAsset();
+        PictureClipboard.Attach(assets, () => assets.SelectedItems.Count > 0 ? (string)((Dictionary<string, object>)assets.SelectedItems[0].Tag)["file"] : null,
+            (m, ok) => Say(m, ok ? Theme.Ok : Theme.Warn));
         var actions = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, BackColor = Theme.Surface, Padding = new Padding(6) };
         actions.Controls.Add(openExternal); actions.Controls.Add(openFolder); actions.Controls.Add(toHtml); actions.Controls.Add(toHwpx);
-        openExternal.Click += (s, e) => OpenExternal(); openFolder.Click += (s, e) => { if (resultPath != null) Process.Start("explorer.exe", "/select,\"" + (Directory.Exists(resultPath) ? Path.Combine(resultPath, resultKind == "html" ? "document.html" : "document.json") : resultPath) + "\""); };
+        openExternal.Click += (s, e) => OpenExternal(); openFolder.Click += async (s, e) => { if (resultPath != null) await ShowInExplorer((Directory.Exists(resultPath) ? Path.Combine(resultPath, resultKind == "html" ? "document.html" : "document.json") : resultPath)); };
         toHtml.Click += async (s, e) => await Convert("html"); toHwpx.Click += async (s, e) => await Convert("hwpx");
         side.Controls.Add(assets); side.Controls.Add(Rule(DockStyle.Top)); side.Controls.Add(resNotes); side.Controls.Add(resState); side.Controls.Add(resTitle); side.Controls.Add(ocr); side.Controls.Add(actions);
         origSplit.Panel1.Controls.Add(orig); origSplit.Panel2.Controls.Add(figures);
@@ -216,6 +226,7 @@ class Desktop : Form {
         };
         FormClosing += (s, e) => { figures.Shutdown(); worker.Shutdown(); };   // only processes this app started
         resultSplit.Resize += (s, e) => FitResultPanel();
+        assetPic.Resize += (s, e) => FitAssetPic();
         Shown += (s, e) => { Refresh2(); Say("Ctrl+O 또는 끌어다 놓기로 HWP/HWPX 문서를 여세요.", Theme.Muted); };
     }
 
@@ -232,10 +243,10 @@ class Desktop : Form {
         tabOrig.Active = !showingResult; tabResult.Active = showingResult; tabOrig.Invalidate(); tabResult.Invalidate();
         if (showingResult && resultKind == "pages" && resultPath != null) {
             if (resultPages.Error != null) SetResState(true, "미리보기 실패 · " + resultPages.Error, false);
-            else if (resultPages.Pages > 0) SetResState(true, String.Format("미리보기 성공 · 결과 파일을 다시 렌더링 ({0}쪽, 렌더러 쪽 기준)", resultPages.Pages), true);
+            else if (resultPages.Pages > 0) SetResState(true, String.Format("미리보기 성공 · 저장된 결과 파일을 다시 그려 표시 ({0}쪽)", resultPages.Pages), true);
         }
         if (!showingResult && source != null && orig.Pages > 0 && orig.Error == null && exportProc == null && !status.Text.StartsWith("저장") && !status.Text.StartsWith("내보내기") && !status.Text.StartsWith("이전 문서"))
-            Say(String.Format("원본 미리보기 · 렌더러 쪽 {0} / {1}{2}", orig.Page + 1, orig.Pages, orig.Renderer == "hancom-pdf" ? " · 한컴 PDF로 표시" : ""), Theme.Muted);
+            Say(String.Format("원본 미리보기 · {0} / {1}쪽{2}", orig.Page + 1, orig.Pages, orig.Renderer == "hancom-pdf" ? " · 한컴 PDF로 표시" : ""), Theme.Muted);
     }
 
     void SwitchTab(bool result) {
@@ -245,14 +256,33 @@ class Desktop : Form {
 
     static string Ago(DateTime? t) { if (t == null) return ""; var d = DateTime.Now - t.Value; return d.TotalMinutes >= 1 ? String.Format("{0}분 {1:00}초", (int)d.TotalMinutes, d.Seconds) : String.Format("{0}초", d.Seconds); }
     void UpdateStrip() {
-        if (structStart != null) { stStructure.Text = "구조: 읽는 중 · " + Ago(structStart); stStructure.ForeColor = Theme.Text; }
+        if (structStart != null) { stStructure.Text = "구조 읽는 중 · " + Ago(structStart) + " 경과"; stStructure.ForeColor = Theme.Text; }
         else if (structDone != null) { stStructure.Text = structDone; }
-        if (orig.Busy && previewStart != null) { stPreview.Text = "미리보기: " + (previewRoute.Length > 0 ? previewRoute : "그리는 중") + " · " + Ago(previewStart); stPreview.ForeColor = Theme.Text; }
+        if (orig.Busy && previewStart != null) { stPreview.Text = "미리보기: " + (previewRoute.Length > 0 ? previewRoute : "그리는 중") + " · " + Ago(previewStart) + " 경과"; stPreview.ForeColor = Theme.Text; }
         else if (source != null && orig.Pages > 0) { stPreview.Text = String.Format("미리보기: 완료 · {0}쪽{1}", orig.Pages, orig.Renderer == "hancom-pdf" ? " (한컴 PDF)" : ""); stPreview.ForeColor = Theme.Muted; previewStart = null; }
         else if (orig.Error != null) { stPreview.Text = "미리보기: 실패"; stPreview.ForeColor = Theme.Warn; previewStart = null; }
-        stExport.Text = exportStart != null ? "내보내기: " + exportStep + " · " + Ago(exportStart) : "";
+        stExport.Text = exportStart == null ? "" : "내보내는 중: " + exportStep + (exportStage.Length > 0 ? " · " + exportStage + Progress() : "") + " · " + Ago(exportStart) + " 경과";
         stExport.ForeColor = Theme.Text;
         busyBar.Visible = structStart != null || (orig.Busy && previewStart != null) || exportStart != null;
+    }
+    // "표 찾기 340/1182쪽 (29%) · 남은 시간 약 9분": the estimate appears once a few pages are done
+    string Progress() {
+        if (stageTotal <= 0 || stageDone < 0) return "";
+        string p = String.Format(" {0:N0}/{1:N0}쪽 ({2}%)", stageDone, stageTotal, stageDone * 100 / stageTotal);
+        if (stageStart != null && stageDone >= 5 && stageDone < stageTotal) {
+            double perPage = (DateTime.Now - stageStart.Value).TotalSeconds / stageDone; var left = TimeSpan.FromSeconds(perPage * (stageTotal - stageDone));
+            p += left.TotalMinutes >= 1 ? String.Format(" · 남은 시간 약 {0}분", (int)Math.Ceiling(left.TotalMinutes)) : " · 곧 끝남";
+        }
+        return p;
+    }
+    void OnProgress(Dictionary<string, object> e) {
+        BeginInvoke((Action)(() => {
+            string stage = (string)e["stage"];
+            if (stage != exportStage) { exportStage = stage; stageStart = DateTime.Now; stageDone = -1; stageTotal = 0; }
+            if (e.ContainsKey("total")) { stageTotal = System.Convert.ToInt32(e["total"]); stageDone = System.Convert.ToInt32(e["done"]); }
+            if (e.ContainsKey("detail") && stageTotal == 0) exportStage = stage + " (" + e["detail"] + ")";
+            UpdateStrip();
+        }));
     }
     async Task ReadStructure(string path, int job) {
         structStart = DateTime.Now; structDone = null; UpdateStrip();
@@ -260,7 +290,7 @@ class Desktop : Form {
             string o = await Task.Run(() => worker.Run("summary " + Worker.Quote(path), 1800000));
             if (job != jobId) return;                                     // an older document finished late
             var d = json.Deserialize<Dictionary<string, object>>(o);
-            structDone = String.Format("구조: 완료 · 문단 {0:N0} · 표 {1:N0} (중첩 {2:N0}) · 그림 {3:N0} · {4}초", d["paragraphs"], d["tables"], d["nested_tables"], d["pictures"], d["seconds"]);
+            structDone = String.Format("구조 읽기 완료 ({4}초 걸림) · 문단 {0:N0} · 표 {1:N0} (중첩 {2:N0}) · 그림 {3:N0}", d["paragraphs"], d["tables"], d["nested_tables"], d["pictures"], d["seconds"]);
             if ((string)d["builder"] != "rhwp") { structDone += " · 원본 XML에서 직접 읽음"; previewRoute = "한컴으로 전체 문서를 PDF로 변환 중 (큰 문서는 수 분)"; }
             stStructure.ForeColor = Theme.Ok;
         } catch (Exception ex) { if (job != jobId) return; structDone = "구조: 읽기 실패 · " + ex.Message; stStructure.ForeColor = Theme.Warn; }
@@ -324,10 +354,10 @@ class Desktop : Form {
         string final = Unique(target), parent = Path.GetDirectoryName(final);
         string temp = Path.Combine(parent, ".govparse-" + Guid.NewGuid().ToString("N").Substring(0, 10));
         HashSet<int> snap = null; bool ok = false;
-        exportStart = DateTime.Now; exportStep = label; UpdateStrip();
+        exportStart = DateTime.Now; exportStep = label; exportStage = ""; stageDone = -1; stageTotal = 0; UpdateStrip();
         Directory.CreateDirectory(temp); SetExporting(true); Say("내보내는 중 · " + label + "  (Esc로 취소)", Theme.Muted);
         try {
-            string outJson = await Task.Run(() => { snap = HancomGuard.Snapshot(); return worker.Run(workerArgsPrefix + " " + Worker.Quote(temp) + (mode.StartsWith("convert") ? " " + mode.Substring(8) : ""), 3600000, p => exportProc = p); });
+            string outJson = await Task.Run(() => { snap = HancomGuard.Snapshot(); return worker.Run(workerArgsPrefix + " " + Worker.Quote(temp) + (mode.StartsWith("convert") ? " " + mode.Substring(8) : ""), 3600000 * 3, p => exportProc = p, OnProgress); });
             var rep = json.Deserialize<Dictionary<string, object>>(outJson);
             string kind = mode.StartsWith("convert") ? mode.Substring(8) : mode;
             if (kind == "hwpx" || kind == "hwp") {
@@ -399,6 +429,7 @@ class Desktop : Form {
             if (rep.ContainsKey("ir_builder")) notes.Add("· 구조 읽기: " + rep["ir_builder"]);
         } else notes.Add("· 기존 결과를 불러왔습니다 (이번 실행에서 만든 결과가 아님)");
         resultPath = path; resultKind = kind; resultJson = kind == "json" ? file : null;
+        if (sourceName == null) sourceName = SourceNameOf(path);   // a loaded result: the source name is in its report.json
         resTitle.Text = (sourceName != null ? sourceName + " → " : "") + Path.GetFileName(path);
         resNotes.Text = String.Join("\r\n", notes);
         web.Visible = kind == "html"; assetPic.Visible = kind == "json"; resultPages.Visible = kind == "pages";
@@ -406,15 +437,17 @@ class Desktop : Form {
         openExternal.SetText(kind == "html" ? "브라우저에서 열기" : kind == "pages" ? "한글에서 열기" : "JSON 열기");
         toHtml.Visible = toHwpx.Visible = kind == "json"; toHtml.Enabled = toHwpx.Enabled = kind == "json";
         if (kind == "html") { SetResState(saved, "미리보기 여는 중…", false); web.Navigate(new Uri(file)); web.DocumentCompleted += (s, e) => { if (resultKind == "html") SetResState(true, "미리보기 성공 · 저장된 로컬 HTML을 표시", true); }; }
-        else if (kind == "pages") { SetResState(saved, "미리보기 준비 중 · 저장된 결과 파일을 다시 렌더링", false); var _ = resultPages.Load(file); }
+        else if (kind == "pages") { SetResState(saved, "미리보기 준비 중 · 저장된 결과 파일을 다시 그리는 중", false); var _ = resultPages.Load(file); }
         else {
             SetResState(saved, "자산 목록 읽는 중…", false);
             string o = await Task.Run(() => worker.Run("index " + Worker.Quote(file), 600000));
             var idx = json.Deserialize<Dictionary<string, object>>(o);
             foreach (Dictionary<string, object> a in (ArrayList)idx["assets"]) {
                 bool embedded = (string)a["origin"] == "embedded_picture";
-                string info = embedded ? (string)a["text"] : "렌더러 쪽 " + a["page"] + "의 표 영역 (어느 표인지는 확인되지 않음)";
-                assets.Items.Add(new ListViewItem(new[] { Path.GetFileName((string)a["path"]), embedded ? "내장 그림" : "표 캡처(렌더)", info }) { Tag = a });
+                string src = idx.ContainsKey("source_name") && idx["source_name"] != null ? (string)idx["source_name"] : "";
+                string txt = a.ContainsKey("text") && a["text"] != null ? (string)a["text"] : "";
+                string info = (embedded ? (txt.Length > 0 ? txt : "문서에 들어 있던 그림") : "미리보기 " + a["page"] + "쪽의 표 영역 (어느 표인지는 확인되지 않음)");
+                assets.Items.Add(new ListViewItem(new[] { Path.GetFileName((string)a["path"]), embedded ? "내장 그림" : "표 캡처", info, src }) { Tag = a });
             }
             int missing = ((ArrayList)idx["missing"]).Count;
             var integ = idx["integrity"] as Dictionary<string, object>;
@@ -432,14 +465,47 @@ class Desktop : Form {
     void SelectAsset() {
         if (assets.SelectedItems.Count == 0) return;
         var a = (Dictionary<string, object>)assets.SelectedItems[0].Tag;
-        try { using (var f = Image.FromFile((string)a["file"])) { var old = assetPic.Image; var bmp = new Bitmap(f); assetPic.SizeMode = bmp.Width <= assetPic.Width && bmp.Height <= assetPic.Height ? PictureBoxSizeMode.CenterImage : PictureBoxSizeMode.Zoom; assetPic.Image = bmp; if (old != null) old.Dispose(); } } catch { assetPic.Image = null; }
+        try { using (var f = Image.FromFile((string)a["file"])) { var old = assetPic.Image; var bmp = new Bitmap(f); assetPic.Image = bmp; FitAssetPic(); if (old != null) old.Dispose(); } } catch { assetPic.Image = null; }
         string st = (string)a["ocr_status"];
         ocr.Show(st == "ok" || st == "empty" ? ((ArrayList)a["ocr_texts"]).Cast<string>().ToArray() : null);
+    }
+    [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr hWnd, int cmd);
+    // Explorer hands "/select" to the running shell process, which may open behind this window.
+    // We are the foreground app, so we may bring that new Explorer window to the front ourselves.
+    async Task ShowInExplorer(string file) {
+        Launch("explorer.exe", "/select,\"" + file + "\"");
+        string folder = new Uri(Path.GetDirectoryName(file) + Path.DirectorySeparatorChar).AbsoluteUri.TrimEnd('/');
+        for (int i = 0; i < 20; i++) {
+            await Task.Delay(150);
+            try {
+                dynamic shell = Activator.CreateInstance(Type.GetTypeFromProgID("Shell.Application"));
+                foreach (dynamic w in shell.Windows()) {
+                    string url = ((string)w.LocationURL ?? "").TrimEnd('/');
+                    if (String.Equals(url, folder, StringComparison.OrdinalIgnoreCase)) { var h = new IntPtr((long)w.HWND); ShowWindow(h, 9); SetForegroundWindow(h); return; }
+                }
+            } catch { }
+        }
+    }
+    // Source file name recorded in the result's report.json (next to the file, or inside the folder); null when absent.
+    string SourceNameOf(string path) {
+        try {
+            string dir = Directory.Exists(path) ? path : Path.GetDirectoryName(path);
+            string rp = Path.Combine(dir, "report.json");
+            if (!File.Exists(rp)) return null;
+            var rep = json.Deserialize<Dictionary<string, object>>(File.ReadAllText(rp, Encoding.UTF8));
+            string src = rep.ContainsKey("source") ? rep["source"] as string : null;
+            return String.IsNullOrEmpty(src) ? null : Path.GetFileName(src);
+        } catch { return null; }
+    }
+    void FitAssetPic() {
+        var b = assetPic.Image; if (b == null) return;
+        assetPic.SizeMode = b.Width <= assetPic.ClientSize.Width && b.Height <= assetPic.ClientSize.Height ? PictureBoxSizeMode.CenterImage : PictureBoxSizeMode.Zoom;
     }
     void OpenExternal() {
         if (resultPath == null) return;
         string f = Directory.Exists(resultPath) ? Path.Combine(resultPath, resultKind == "html" ? "document.html" : "document.json") : resultPath;
-        try { Process.Start(f); } catch (Exception ex) { Say("열 수 없습니다 · " + ex.Message, Theme.Warn); }   // opens in the user's own app; never closed by this app
+        try { Launch(f); } catch (Exception ex) { Say("열 수 없습니다 · " + ex.Message, Theme.Warn); }   // opens in the user's own app; never closed by this app
     }
 
     [STAThread] static void Main() {

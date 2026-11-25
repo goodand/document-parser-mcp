@@ -38,7 +38,9 @@ _KINDS = [
     ("bracket_title", re.compile(r"^[<〈《【\[「].{2,}[>〉》】\]」]$")),
     ("heading", re.compile(r"^(\(\d+\)|\d+\.|[□■○◦ㅇ∘▪◾￭√❍➀-➉①-⑳]|[가-하]\.)\s")),
 ]
-PROPOSE = {"numbered_label", "bracket_title"}
+# No caption recommendation: a format-only rule (numbered label / bracketed title) was measured mostly
+# wrong on TIPS (section titles in brackets), so nothing is proposed. Kinds remain as plain labels.
+PROPOSE: set[str] = set()
 REASON = {
     "numbered_label": "그림 번호 표식으로 시작함",
     "bracket_title": "괄호로 감싼 제목 형식",
@@ -259,12 +261,15 @@ def extract(source: Path) -> FigureDoc:
 
 # ------------------------------------------------------------------ decisions
 SCHEMA_VERSION = 1
-_ACTIONS = {"link", "share", "unlink", "none", "undecided"}
+_ACTIONS = {"link", "share", "unlink", "none", "undecided", "text"}
+_TEXT_ORIGINS = {"ocr": "그림 OCR 결과로 지정", "typed": "직접 입력"}
 
 
 def _valid_decision(v) -> bool:
     if not isinstance(v, dict) or v.get("action") not in _ACTIONS:
         return False
+    if v["action"] == "text":
+        return isinstance(v.get("text"), str) and bool(v["text"].strip()) and v.get("origin") in _TEXT_ORIGINS
     if v["action"] in ("link", "share"):
         refs = v.get("para_refs")
         return isinstance(refs, list) and bool(refs) and all(isinstance(r, str) for r in refs)
@@ -310,6 +315,15 @@ class DecisionStore:
         group = "g-" + hashlib.sha1("|".join(sorted(occ_ids)).encode()).hexdigest()[:8]
         self._apply({o: {"action": "share", "group": group, "para_refs": list(para_refs)}
                      for o in occ_ids})
+
+    def set_text(self, occ_id: str, text: str, origin: str) -> None:
+        """Caption written by a person (typed) or taken from the picture's OCR text (ocr)."""
+        text = (text or "").strip()
+        if not text:
+            raise ValueError("설명 내용이 비어 있습니다.")
+        if origin not in _TEXT_ORIGINS:
+            raise ValueError(f"알 수 없는 설명 출처: {origin}")
+        self._apply({occ_id: {"action": "text", "text": text, "origin": origin}})
 
     def unlink(self, occ_id: str) -> None:
         self._apply({occ_id: {"action": "unlink"}})
@@ -418,7 +432,7 @@ def _candidates(doc: FigureDoc, o: Occurrence, window: int = 2) -> tuple[list[Ca
                     n += 1
                     if n == window:
                         break
-    out.sort(key=lambda c: (not c.proposed, c.distance))
+    out.sort(key=lambda c: c.distance)  # nearest first; no ranking by text format
     return out, before, after
 
 
@@ -433,6 +447,8 @@ def link_figures(doc: FigureDoc, store: DecisionStore) -> list[FigureLink]:
             status = "user_shared" if d["action"] == "share" else "user_linked"
             text = " / ".join(doc.paragraphs[r].text for r in refs)
             evidence, group = "사용자 확인", d.get("group")
+        elif d and d["action"] == "text":
+            status, refs, text, evidence = "user_linked", [], d["text"], _TEXT_ORIGINS[d["origin"]]
         elif d and d["action"] == "none":
             status, refs, text, evidence = "user_no_caption", [], "", "사용자 확인: 설명 없음"
         elif d and d["action"] == "undecided":
@@ -443,7 +459,7 @@ def link_figures(doc: FigureDoc, store: DecisionStore) -> list[FigureLink]:
         else:
             status, refs, text = "needs_review", [], ""
             evidence = "사용자가 연결 해제" if d else (
-                "후보 있음: " + cands[0].reason if any(c.proposed for c in cands) else "명시 캡션 없음")
+                "명시 캡션 없음")
         links.append(FigureLink(o, status, refs, text, evidence, group, cands, before, after))
     return links
 

@@ -88,3 +88,45 @@ def test_serve_replies_on_stdout_without_eof(tmp_path):
     finally:
         p.kill()
         _ = os
+
+
+def test_service_sets_text_caption(tmp_path):
+    src = tmp_path / "doc.hwpx"
+    shutil.copy2(FIX, src)
+    svc = FigureService(tmp_path / "dec")
+    data = load(svc.handle({"cmd": "open", "src": str(src), "out": str(tmp_path / "o")}))
+    oid = data["links"][5]["occurrence"]["occ_id"]
+    data = load(svc.handle({"cmd": "decide", "action": "text", "occ_ids": [oid], "text": "직접 쓴 설명", "origin": "typed"}))
+    assert data["links"][5]["caption_text"] == "직접 쓴 설명" and data["links"][5]["status"] == "user_linked"
+    assert not svc.handle({"cmd": "decide", "action": "text", "occ_ids": [oid], "text": " ", "origin": "typed"})["ok"]
+
+
+def test_locations_computed_once_per_document(tmp_path, monkeypatch):
+    """Saving a caption must not re-render every page (TIPS: ~20 s per save before this fix)."""
+    from gpdesk import figure_service
+
+    calls = []
+    real = figure_service.locate
+    monkeypatch.setattr(figure_service, "locate", lambda *a, **k: (calls.append(1), real(*a, **k))[1])
+    src = tmp_path / "doc.hwpx"
+    shutil.copy2(FIX, src)
+    svc = FigureService(tmp_path / "dec")
+    data = load(svc.handle({"cmd": "open", "src": str(src), "out": str(tmp_path / "o")}))
+    oid = data["links"][5]["occurrence"]["occ_id"]
+    for text in ("하나", "둘", "셋"):
+        data = load(svc.handle({"cmd": "decide", "action": "text", "occ_ids": [oid], "text": text, "origin": "typed"}))
+    assert len(calls) == 1
+    assert data["links"][5]["location"]["verified"] is True  # cached location still attached
+    load(svc.handle({"cmd": "rerun"}))
+    assert len(calls) == 2  # re-extraction recomputes
+
+
+def test_source_kind_from_document_structure(tmp_path):
+    """'원본 유형' = picture file format + where it sits; only facts read from the document."""
+    src = tmp_path / "doc.hwpx"
+    shutil.copy2(FIX, src)
+    data = load(FigureService(tmp_path / "dec").handle({"cmd": "open", "src": str(src), "out": str(tmp_path / "o")}))
+    kinds = [l["source_kind"] for l in data["links"]]
+    assert kinds[0] == "그림(PNG) · 표 안 (중첩 표)"
+    assert kinds[4] == "그림(PNG) · 본문"
+    assert kinds[5] == "그림(PNG) · 표 안"
