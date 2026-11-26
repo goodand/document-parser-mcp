@@ -125,6 +125,10 @@ class Desktop : Form {
     readonly AxButton toHtml = new AxButton("HTML로 변환", AxKind.Secondary), toHwpx = new AxButton("HWPX로 변환", AxKind.Secondary);
     readonly AxButton openZip = new AxButton("압축 파일 보기", AxKind.Secondary);
     readonly OcrBox ocr;
+    // shown above the original view when the preview program may draw a picture and a table over each other
+    readonly Panel previewNotice = new Panel { Dock = DockStyle.Top, BackColor = Theme.WarnBg, Visible = false };
+    readonly Label previewNoticeText = new Label { Dock = DockStyle.Fill, ForeColor = Theme.Warn, Padding = new Padding(10, 6, 6, 4) };
+    readonly AxButton previewNoticeClose = new AxButton("닫기", AxKind.Ghost) { Dock = DockStyle.Right };
     // 표 고치기 (qt/SPEC.md §8): a separate mode of the result side panel
     readonly TablePanel tables;
     readonly AxButton tableBtn = new AxButton("표 고치기", AxKind.Secondary);
@@ -222,7 +226,10 @@ class Desktop : Form {
         tableBar.Controls.Add(tableBtn); tableBar.Visible = false;
         tableBtn.Click += (s, e) => ToggleTables();
         side.Controls.Add(assets); side.Controls.Add(tables); side.Controls.Add(Rule(DockStyle.Top)); side.Controls.Add(tableBar); side.Controls.Add(resNotes); side.Controls.Add(resState); side.Controls.Add(resTitle); side.Controls.Add(ocr); side.Controls.Add(actions);
-        origSplit.Panel1.Controls.Add(orig); origSplit.Panel2.Controls.Add(figures);
+        previewNotice.Height = Theme.Px(64); previewNoticeText.Font = Theme.Small;
+        previewNotice.Controls.Add(previewNoticeText); previewNotice.Controls.Add(previewNoticeClose);
+        previewNoticeClose.Click += (s, e) => previewNotice.Visible = false;
+        origSplit.Panel1.Controls.Add(orig); origSplit.Panel1.Controls.Add(previewNotice); origSplit.Panel2.Controls.Add(figures);
         resultSplit.Panel1.Controls.Add(resultPages); resultSplit.Panel1.Controls.Add(web); resultSplit.Panel1.Controls.Add(assetPic); resultSplit.Panel2.Controls.Add(side);
 
         var strip = Bar(DockStyle.Top, 34); strip.Padding = new Padding(0); strip.BackColor = Theme.Canvas; strip.WrapContents = false;
@@ -315,8 +322,21 @@ class Desktop : Form {
             structDone = String.Format("구조 읽기 완료 ({4}초 걸림) · 문단 {0:N0} · 표 {1:N0} (중첩 {2:N0}) · 그림 {3:N0}", d["paragraphs"], d["tables"], d["nested_tables"], d["pictures"], d["seconds"]);
             if ((string)d["builder"] != "rhwp") { structDone += " · 원본 XML에서 직접 읽음"; previewRoute = "한컴으로 전체 문서를 PDF로 변환 중 (큰 문서는 수 분)"; }
             stStructure.ForeColor = Theme.Ok;
+            ShowPreviewNotice(d.ContainsKey("preview_overlap") ? d["preview_overlap"] as Dictionary<string, object> : null);
         } catch (Exception ex) { if (job != jobId) return; structDone = "구조: 읽기 실패 · " + ex.Message; stStructure.ForeColor = Theme.Warn; }
         finally { if (job == jobId) { structStart = null; UpdateStrip(); } }
+    }
+
+    // The document has places the preview program is known to draw over each other: say so, and point to the original.
+    void ShowPreviewNotice(Dictionary<string, object> risk) {
+        int n = risk != null && risk.ContainsKey("count") ? System.Convert.ToInt32(risk["count"]) : 0;
+        if (n == 0 || orig.Renderer == "hancom-pdf") { previewNotice.Visible = false; return; }
+        var labels = ((ArrayList)risk["labels"]).Cast<object>().Select(o => o.ToString()).ToList();
+        string where = labels.Count > 0 ? " (" + String.Join(", ", labels) + (n > labels.Count ? " 등" : "") + ")" : "";
+        previewNoticeText.Text = "미리보기 주의 · 이 문서에는 화면 구현기(미리보기 프로그램)가 그림과 표를 겹쳐 그릴 수 있는 곳이 " + n + "곳 있습니다" + where + ". "
+            + "화면 표시만의 문제이고 문서와 내보낸 결과는 정상입니다. 정확한 모양은 원본 문서(한글)에서 확인하세요."
+            + (HancomGuard.Installed ? " 설정 › 미리보기 방식 › ‘한컴오피스로 그리기’로 바꾸면 원본과 같게 보입니다." : "");
+        previewNotice.Visible = true;
     }
 
     void FitResultPanel() { try { if (resultSplit.Visible && resultSplit.Width > Theme.Px(700)) resultSplit.SplitterDistance = resultSplit.Width - Theme.Px(460); } catch { } }
@@ -329,7 +349,7 @@ class Desktop : Form {
     void Open(string path) {
         string ext = Path.GetExtension(path).ToLowerInvariant();
         if (ext != ".hwp" && ext != ".hwpx") { Say("HWP 또는 HWPX 파일만 열 수 있습니다: " + Path.GetFileName(path), Theme.Warn); return; }
-        source = path; int job = ++jobId;
+        source = path; int job = ++jobId; previewNotice.Visible = false;
         Text = "GovParse Desktop · " + Path.GetFileName(path); fileName.Text = Path.GetFileName(path);
         Say("여는 중 · " + Path.GetFileName(path), Theme.Muted);
         SwitchTab(false);

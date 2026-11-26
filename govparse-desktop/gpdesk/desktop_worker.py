@@ -676,6 +676,50 @@ def convert(json_path: Path, out: Path, fmt: str) -> dict:
     return rep
 
 
+def _has_picture(block) -> bool:
+    if not isinstance(block, dict):
+        return False
+    if block.get("kind") == "picture":
+        return True
+    return any(_has_picture(x) for key in ("inlines", "blocks", "children") for x in (block.get(key) or []))
+
+
+def preview_overlap_risk(ir: dict) -> dict:
+    """Places where the preview program (rhwp 0.8.1) is known to draw things over each other.
+
+    Measured on a real document (2026-11-26): inside one table cell, a picture followed by a table in a later
+    paragraph is drawn at the top of the cell together with that table. Hancom draws the same file correctly, so
+    this is a display problem only. Detection reads the structure; it does not look at the drawn page.
+    Returns {"count", "labels": up to 3 places}. A place is named by the text just above its table in the body
+    (usually a heading the reader can find), or by the table's number when there is no text above it.
+    """
+    labels: list[str] = []
+    count = 0
+
+    def walk(blocks, where):
+        nonlocal count
+        seen, above = 0, ""
+        for b in blocks or []:
+            if not isinstance(b, dict):
+                continue
+            if b.get("kind") == "paragraph" and where is None and (b.get("text") or "").strip():
+                above = " ".join((b.get("text") or "").split())
+            if b.get("kind") != "table":
+                continue
+            seen += 1
+            place = where or (f"‘{above[:30]}{'…' if len(above) > 30 else ''}’ 아래 표" if above else f"본문 {seen}번째 표")
+            for c in b.get("cells") or []:
+                kinds = ["picture" if _has_picture(x) else x.get("kind") for x in c.get("blocks") or [] if isinstance(x, dict)]
+                if "picture" in kinds and "table" in kinds[kinds.index("picture"):]:
+                    count += 1
+                    if len(labels) < 3 and place not in labels:
+                        labels.append(place)
+                walk(c.get("blocks"), place)
+
+    walk(ir.get("body"), None)
+    return {"count": count, "labels": labels}
+
+
 def summary(path: Path) -> dict:
     """Read the document structure once and report what was found (shown while the user works)."""
     import time
@@ -702,7 +746,7 @@ def summary(path: Path) -> dict:
     note = ("rhwp로 쪽을 바로 그립니다." if src.doc is not None else
             "미리보기 프로그램(rhwp)이 이 문서를 열지 못해 한컴으로 전체 문서를 PDF로 바꾼 뒤 표시합니다. 큰 문서는 수 분 걸립니다.")
     return {**counts, "builder": src.builder, "source_sha256": _sha(path), "preview_note": note,
-            "seconds": round(time.time() - t0, 1)}
+            "preview_overlap": preview_overlap_risk(ir), "seconds": round(time.time() - t0, 1)}
 
 
 def index(json_path: Path) -> dict:

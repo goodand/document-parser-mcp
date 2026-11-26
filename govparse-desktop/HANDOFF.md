@@ -41,7 +41,7 @@ cd govparse-desktop && python build.py          # build/app, dist/GovParse-Deskt
 - [ ] 설치 → 실행 → 제거를 최종 설치 파일로 다시 시험, `install-test-checklist.html`을 PDF로 다시 만들기(설치 파일 크기와 SHA-256 갱신, 표 고치기 단계 추가).
 - [ ] 표를 고친 뒤 압축 파일(.zip)을 다시 만드는 기능. 지금은 내보낼 때 한 번만 만듭니다.
 - [ ] 본문 그림(표 이미지가 아닌 그림)과 여러 쪽에 걸친 표의 이미지 읽기.
-- [ ] 미리보기 겹침: rhwp가 표 칸 안의 그림 다음 표를 겹쳐 그립니다. 한컴 미리보기 설정으로 우회 중이고, rhwp 수정본이 필요합니다.
+- [ ] 미리보기 겹침: rhwp가 표 칸 안의 그림 다음 표를 겹쳐 그립니다. 한컴 미리보기 설정으로 우회 중이고, rhwp 수정본이 필요합니다. 그런 구조가 있는 문서를 열면 Windows 앱이 ‘미리보기 주의’ 안내를 띄웁니다(워커 `summary`의 `preview_overlap`). PySide6 화면에는 아직 없습니다.
 - [ ] SLANetPlus 가중치의 재배포 조건: RapidTable(코드)과 원 출처 PaddleX는 Apache-2.0이고 별도 제한은 찾지 못했지만, 모델 배포 페이지(ModelScope)는 확인하지 못했습니다. 외부 배포 전에 확인하세요.
 - [ ] Mac 빌드와 실행, Lean 증명(`formal/gui-spec`)에 표 고치기 반영.
 

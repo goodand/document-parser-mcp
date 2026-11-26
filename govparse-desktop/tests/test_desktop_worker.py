@@ -363,3 +363,27 @@ def test_zip_mode_through_dispatch(tmp_path):
     folder = _result_folder(tmp_path)
     rep = dw._dispatch(["zip", str(folder), str(tmp_path / "out.zip")])
     assert Path(rep["zip"]).is_file()
+
+
+def test_preview_overlap_risk_finds_picture_then_table_in_one_cell():
+    """rhwp draws a picture and a later table in the same cell over each other; the app warns about such places."""
+    from gpdesk.desktop_worker import preview_overlap_risk
+
+    def para(t=""):
+        return {"kind": "paragraph", "text": t}
+
+    pic = {"kind": "paragraph", "text": "", "inlines": [{"kind": "picture", "image": {"uri": "bin://1"}}]}
+    inner = {"kind": "table", "rows": 1, "cols": 1, "cells": [{"row": 0, "col": 0, "blocks": [para("안쪽")]}]}
+    risky = {"kind": "table", "rows": 1, "cols": 1, "cells": [{"row": 0, "col": 0, "blocks": [pic, para(), inner]}]}
+    table_first = {"kind": "table", "rows": 1, "cols": 1, "cells": [{"row": 0, "col": 0, "blocks": [inner, pic]}]}
+    plain = {"kind": "table", "rows": 1, "cols": 1, "cells": [{"row": 0, "col": 0, "blocks": [para("글자")]}]}
+    assert preview_overlap_risk({"body": [para("제목"), plain, table_first]}) == {"count": 0, "labels": []}
+    assert preview_overlap_risk({"body": [plain, risky]}) == {"count": 1, "labels": ["본문 2번째 표"]}
+    assert preview_overlap_risk({"body": [para("7) 사업  절차"), risky]}) == {"count": 1, "labels": ["‘7) 사업 절차’ 아래 표"]}
+
+
+def test_summary_reports_preview_overlap(tmp_path):
+    from gpdesk import desktop_worker as dw
+
+    s = dw.summary(Path(__file__).resolve().parents[1] / "samples" / "synthetic-figures.hwpx")
+    assert set(s["preview_overlap"]) == {"count", "labels"} and s["preview_overlap"]["count"] >= 0
