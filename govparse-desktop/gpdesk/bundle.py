@@ -71,12 +71,9 @@ def build_json_bundle(out: Path, ir: dict, source_name: str, source_sha256: str,
         st = ocr.get(src.name, OcrStatus("not_run"))
         assets.append({"origin": "rendered_table_capture", "page": page, "path": rel,
                        "table_ref": None, "ocr": asdict(st)})
-    from .table_ids import iter_table_images  # IR blocks already annotated by desktop_worker.table_images
+    from .table_ids import table_assets
 
-    for table_id, paths in iter_table_images(ir):
-        for part, rel in enumerate(paths, start=1):
-            assets.append({"origin": "table_image", "table_id": table_id, "part": part, "parts": len(paths),
-                           "path": rel})
+    assets.extend(table_assets(ir))
     summary = {
         "source_name": source_name,
         "source_sha256": source_sha256,
@@ -85,11 +82,12 @@ def build_json_bundle(out: Path, ir: dict, source_name: str, source_sha256: str,
             "embedded_picture": sum(a["origin"] == "embedded_picture" for a in assets),
             "rendered_table_capture": len(captures) if capture_state in ("ok", "none_detected") else None,
             "table_image": sum(a["origin"] == "table_image" for a in assets),
+            "table_source_page": sum(a["origin"] == "table_source_page" for a in assets),
         },
         "table_images": table_images,
         "missing_pictures": missing,
-        "notes": ("table_image is linked to its IR table by table_id; rendered_table_capture is linked to a "
-                  "PDF page only; table/cell link not proven."),
+        "notes": ("table_image is a selected individual table. table_source_page shows the entire source "
+                  "page for its table_id. A legacy rendered_table_capture has only a page link."),
     }
     payload = {"source_ir": ir, "govparse_desktop": {**summary, "assets": assets}}
     (out / "document.json").write_text(json.dumps(payload, ensure_ascii=False, indent=1), "utf-8")

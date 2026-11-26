@@ -471,8 +471,8 @@ class Desktop : Form {
         if (rep != null) {
             if (rep.ContainsKey("notes")) notes.AddRange(((ArrayList)rep["notes"]).Cast<object>().Select(o => "· " + o));
             if (rep.ContainsKey("restore")) { var r = (Dictionary<string, object>)rep["restore"]; notes.Add(String.Format("· 그림 {0}개 복원 · 원문 캡션 {1}개 · 사용자 연결 {2}건은 .links.json", r["pictures"], r["source_captions"], r["user_links_sidecar"])); }
-            if (rep.ContainsKey("bundle")) { var b = (Dictionary<string, object>)((Dictionary<string, object>)rep["bundle"])["counts"]; bool perTable = b.ContainsKey("table_image") && System.Convert.ToInt32(b["table_image"]) > 0;
-                notes.Add(perTable ? String.Format("· 내장 그림 {0}개 · 표 이미지 {1}장 (표마다 따로)", b["embedded_picture"], b["table_image"])
+            if (rep.ContainsKey("bundle")) { var bundle = (Dictionary<string, object>)rep["bundle"]; var b = (Dictionary<string, object>)bundle["counts"]; bool perTable = bundle.ContainsKey("table_images") && bundle["table_images"] != null;
+                notes.Add(perTable ? String.Format("· 내장 그림 {0}개 · 표 이미지 {1}장", b["embedded_picture"], b["table_image"])
                                    : String.Format("· 내장 그림 {0}개 · 표 캡처 {1}", b["embedded_picture"], b["rendered_table_capture"] == null ? "미확인" : b["rendered_table_capture"] + "장")); }
             if (rep.ContainsKey("ir_builder")) notes.Add("· 구조 읽기: " + rep["ir_builder"]);
         } else notes.Add("· 기존 결과를 불러왔습니다 (이번 실행에서 만든 결과가 아님)");
@@ -497,15 +497,18 @@ class Desktop : Form {
                 string txt = a.ContainsKey("text") && a["text"] != null ? (string)a["text"] : "";
                 string kindText, info;
                 if (origin == "embedded_picture") { kindText = "내장 그림"; info = txt.Length > 0 ? txt : "문서에 들어 있던 그림"; }
-                else if (origin == "table_image") { kindText = "표 이미지"; info = txt; }   // one table, matched to the source by the engine
+                else if (origin == "table_image") { kindText = "표 이미지"; info = txt; }
+                else if (origin == "table_source_page") { kindText = "원본 쪽"; info = txt; }
                 else { kindText = "표 캡처"; info = "미리보기 " + a["page"] + "쪽의 표 영역 (어느 표인지는 확인되지 않음)"; }
                 assets.Items.Add(new ListViewItem(new[] { Path.GetFileName((string)a["path"]), kindText, info, src }) { Tag = a });
             }
             // tables without an image stay visible with the reason, instead of being filled with a similar-looking capture
             var ti = idx.ContainsKey("table_images") ? idx["table_images"] as Dictionary<string, object> : null;
             if (ti != null) {
-                resNotes.Text += String.Format("\r\n· 표 {0}개 중 {1}개 이미지 생성 · PNG {2}장{3}", ti["tables"], ti["rendered"], ti["png"],
-                    System.Convert.ToInt32(ti["not_rendered"]) > 0 ? " · 미생성 " + ti["not_rendered"] + "개는 목록 끝에 사유 표시" : "");
+                resNotes.Text += String.Format("\r\n· 표 {0}개 중 {1}개 이미지 생성 · PNG {2}장", ti["tables"], ti["rendered"], ti["png"]);
+                if (ti.ContainsKey("source_page_tables") && System.Convert.ToInt32(ti["source_page_tables"]) > 0)
+                    resNotes.Text += " · 표 " + ti["source_page_tables"] + "개는 원본 쪽으로 표시";
+                if (((ArrayList)ti["missing"]).Count > 0) resNotes.Text += " · 미생성 " + ((ArrayList)ti["missing"]).Count + "개는 목록 끝에 사유 표시";
                 foreach (Dictionary<string, object> m in (ArrayList)ti["missing"])
                     assets.Items.Add(new ListViewItem(new[] { "(이미지 없음)", "표 이미지 미생성", m["label"] + " · " + m["reason_text"], src }) { Tag = m, ForeColor = Theme.Warn });
             }

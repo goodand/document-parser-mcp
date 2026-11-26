@@ -66,8 +66,9 @@ for name in ('msvcp140.dll','msvcp140_1.dll'):  # onnxruntime needs the C++ runt
 engine_package = base.parent / 'src' / 'govparse'
 if not engine_package.is_dir():
     engine_package = _cfg.engine_src / 'govparse'
-if not (engine_package / 'image_ocr.py').is_file():
-    raise SystemExit('engine source with image_ocr.py not found: ' + str(engine_package))
+for module in ('image_ocr.py', 'table_selection.py'):
+    if not (engine_package / module).is_file():
+        raise SystemExit(f'engine module missing from the desktop build: {engine_package / module}')
 shutil.rmtree(site/'govparse',ignore_errors=True)
 shutil.copytree(engine_package,site/'govparse',ignore=shutil.ignore_patterns('__pycache__','*.pyc'))
 if not _cfg.ocr_models: raise SystemExit('RapidOCR model folder not found; set ocr_models in config.json')

@@ -18,6 +18,8 @@ dependencies = [
     # --- 원본 HWP/HWPX 문단·셀 경계 보존 (PDF와 별도 sidecar) ---
     "rhwp-python==0.8.1",
     "pillow>=10",                  # 표별 PNG의 원본 픽셀 경계와 여백 처리
+    "numpy>=1.26",                 # 표 크롭과 원본 페이지의 픽셀 정합
+    "opencv-python-headless==5.0.0.93",  # 원본 그림과 표 이미지의 픽셀 비교
     # --- 한컴오피스 COM 자동화 (HWP -> HWPX/PDF) ---
     "pywin32>=308; sys_platform == 'win32'",
     # --- 스키마 / 파이프라인 ---
