@@ -24,6 +24,7 @@ from .platform import CurrentPlatform
 from .settings_dialog import SettingsDialog
 from . import theme
 from .status import ago, progress_text
+from .table_panel import TableEditPanel
 from .widgets import TONES, CopyTree, OcrBox, PageView, Poster, copy_picture, run_bg, set_tone
 from .worker import temp_png
 
@@ -110,6 +111,7 @@ class MainWindow(QMainWindow):
         self.result_gen = 0
         self.preview_mode = "natural"
         self._preview_src_size = QSize()
+        self.preview_box = None
 
         self._build()
         self.say("Ctrl+O 또는 끌어다 놓기로 HWP/HWPX 문서를 여세요.", "muted", "auto")
@@ -238,6 +240,9 @@ class MainWindow(QMainWindow):
         self.assets.customContextMenuRequested.connect(
             lambda pos: self.asset_context_menu(self.assets.itemAt(pos)).popup(self.assets.viewport().mapToGlobal(pos)))
         self.result_ocr = OcrBox("resultOcr", self.poster, self.worker, self._asset_file)
+        self.btn_table_edit = self._btn("표 고치기", "btnTableEdit")
+        self.table_panel = TableEditPanel(self.say, self._show_preview_file, self._read_table_image)
+        self.table_mode = False
         self.btn_external = self._btn("JSON 열기", "btnOpenExternal")
         self.btn_folder = self._btn("폴더 열기", "btnOpenFolder")
         self.btn_zip = self._btn("압축 파일 보기", "btnOpenZip")
@@ -248,13 +253,15 @@ class MainWindow(QMainWindow):
         actions = QGridLayout()
         for i, b in enumerate((self.btn_external, self.btn_folder, self.btn_zip, self.btn_to_html, self.btn_to_hwpx)):
             actions.addWidget(b, i // 3, i % 3)
-        for w in (self.res_title, self.res_state, self.res_notes, self.asset_search, self.assets, self.result_ocr):
+        for w in (self.res_title, self.res_state, self.res_notes, self.btn_table_edit, self.asset_search, self.assets, self.result_ocr):
             sl.addWidget(w)
+        sl.addWidget(self.table_panel, 1)
         sl.addLayout(actions)
         self.result_split = QSplitter(Qt.Horizontal)
         self.result_split.addWidget(self.result_view)
         self.result_split.addWidget(side)
-        for w in (self.asset_search, self.assets, self.result_ocr, self.btn_zip, self.btn_to_html, self.btn_to_hwpx):
+        for w in (self.asset_search, self.assets, self.result_ocr, self.btn_zip, self.btn_to_html, self.btn_to_hwpx,
+                  self.btn_table_edit, self.table_panel):
             w.setVisible(False)
 
         self.main = QStackedWidget()
@@ -311,6 +318,7 @@ class MainWindow(QMainWindow):
         self.btn_zip.clicked.connect(lambda: self._zip_of() and self.platform.reveal(self._zip_of()))
         self.btn_to_html.clicked.connect(lambda: self.convert("html"))
         self.btn_to_hwpx.clicked.connect(lambda: self.convert("hwpx"))
+        self.btn_table_edit.clicked.connect(self.toggle_table_edit)
         act = QAction(self)
         act.setShortcut(QKeySequence.Open)
         act.triggered.connect(self.pick)
@@ -863,8 +871,16 @@ class MainWindow(QMainWindow):
         self.result_view.stack.setVisible(True)
         self.btn_external.setText({"html": "브라우저에서 열기", "pages": "한글에서 열기"}.get(kind, "JSON 열기"))
         is_json = kind == "json"
-        for w in (self.asset_search, self.assets, self.result_ocr, self.btn_to_html, self.btn_to_hwpx):
+        self.table_mode = False
+        self.table_panel.clear()
+        self.table_panel.setVisible(False)
+        self.btn_table_edit.setText("표 고치기")
+        self.btn_table_edit.setEnabled(False)
+        self.btn_table_edit.setToolTip("")
+        for w in (self.asset_search, self.assets, self.result_ocr, self.btn_to_html, self.btn_to_hwpx, self.btn_table_edit):
             w.setVisible(is_json)
+        for w in (self.res_notes, self.btn_external, self.btn_folder):
+            w.setVisible(True)
         self._set_exporting(self.cancel_event is not None)
         self.btn_zip.setVisible(self._zip_of() is not None)
         self.assets.clear()
@@ -956,6 +972,30 @@ class MainWindow(QMainWindow):
         if rows:
             self.assets.setCurrentItem(self.assets.topLevelItem(0))
         self.result_ocr.refresh()
+        self.table_panel.load(idx.get("assets") or [])
+        tables = len(self.table_panel.entries)
+        self.btn_table_edit.setEnabled(tables > 0)
+        self.btn_table_edit.setToolTip("" if tables else "이 결과에는 표 이미지가 없습니다")
+        if rows:
+            self._select_asset()        # the table panel showed its first table while loading
+
+    def toggle_table_edit(self):
+        """표 고치기 모드 (SPEC.md §8): the asset list gives way to the table list and grid."""
+        self.table_mode = not self.table_mode
+        for w in (self.asset_search, self.assets, self.result_ocr, self.res_notes,
+                  self.btn_external, self.btn_folder, self.btn_to_html, self.btn_to_hwpx):
+            w.setVisible(not self.table_mode)      # the grid needs the room; these return on leaving
+        self.btn_zip.setVisible(not self.table_mode and self._zip_of() is not None)
+        self.table_panel.setVisible(self.table_mode)
+        self.btn_table_edit.setText("표 고치기 닫기" if self.table_mode else "표 고치기")
+        if self.table_mode:
+            self.result_view.stack.setCurrentWidget(self.asset_preview)
+            self.table_panel._show()
+        else:
+            self._select_asset()
+            n = self.table_panel.unsaved()
+            if n:
+                self.say(f"저장하지 않은 표 {n}개가 있습니다 · ‘표 고치기’에서 저장하세요", "warn")
 
     def _asset_file(self):
         it = self.assets.currentItem()
@@ -966,11 +1006,43 @@ class MainWindow(QMainWindow):
         f = self._asset_file()
         it = self.assets.currentItem()
         d = it.data(0, Qt.UserRole) if it is not None else None
+        self._show_preview_file(f)
+        st = (d or {}).get("ocr_status")
+        self.result_ocr.refresh(list((d or {}).get("ocr_texts") or []) if st in ("ok", "empty") and d.get("ocr_texts") is not None and st == "ok" else None)
+
+    def _read_table_image(self, png, out, with_ocr, table_id, done, fail):
+        """표 고치기 › 이미지에서 표 읽기: one table picture -> grid candidate (worker image-table, SPEC.md §8)."""
+        gen = self.result_gen
+
+        def ok(r):
+            if gen == self.result_gen:
+                done(r)
+
+        def bad(e):
+            if gen == self.result_gen:
+                fail(e)
+
+        run_bg(self.poster, lambda: self.worker.run("image-table", png, out, "ocr" if with_ocr else "no-ocr", table_id or ""),
+               ok, bad)
+
+    def _show_preview_file(self, f, box=None):
+        """Show a PNG in the result preview; `box` ([x0, y0, x1, y1] in that PNG's pixels) is outlined."""
         self.asset_preview.clear()
         self._preview_src_size = QSize()
+        self.preview_box = list(box) if box else None
         if f and os.path.isfile(f):
             pm = QPixmap(f)
             self._preview_src_size = pm.size()
+            if box and not pm.isNull():
+                from PySide6.QtGui import QPainter, QPen
+
+                painter = QPainter(pm)
+                pen = QPen(QColor(theme.PRIMARY))
+                pen.setWidth(max(2, pm.width() // 300))
+                painter.setPen(pen)
+                x0, y0, x1, y1 = box
+                painter.drawRect(int(x0), int(y0), int(x1 - x0), int(y1 - y0))
+                painter.end()
             area = self.asset_preview.size()
             if pm.width() <= max(area.width(), 1) and pm.height() <= max(area.height(), 1) or area.width() < 10:
                 self.preview_mode = "natural"
@@ -978,8 +1050,6 @@ class MainWindow(QMainWindow):
             else:
                 self.preview_mode = "fit"
                 self.asset_preview.setPixmap(pm.scaled(area, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-        st = (d or {}).get("ocr_status")
-        self.result_ocr.refresh(list((d or {}).get("ocr_texts") or []) if st in ("ok", "empty") and d.get("ocr_texts") is not None and st == "ok" else None)
 
     def asset_preview_mode(self):
         return self.preview_mode

@@ -71,9 +71,13 @@ def build_json_bundle(out: Path, ir: dict, source_name: str, source_sha256: str,
         st = ocr.get(src.name, OcrStatus("not_run"))
         assets.append({"origin": "rendered_table_capture", "page": page, "path": rel,
                        "table_ref": None, "ocr": asdict(st)})
-    from .table_ids import table_assets
+    from .table_ids import iter_table_nodes, table_assets
 
-    assets.extend(table_assets(ir))
+    table_json = {n["table_id"]: n["table_json"] for n in iter_table_nodes(ir) if n.get("table_id") and n.get("table_json")}
+    for a in table_assets(ir):
+        if a["table_id"] in table_json:
+            a["table_json"] = table_json[a["table_id"]]   # editable-table candidate (tables/<key>.json)
+        assets.append(a)
     summary = {
         "source_name": source_name,
         "source_sha256": source_sha256,

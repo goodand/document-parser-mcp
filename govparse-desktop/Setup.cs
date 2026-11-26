@@ -60,7 +60,11 @@ class Setup {
     [STAThread] static int Main(string[] args) {
         try {
             if (args.Length == 2 && args[0] == "--extract") { Extract(Path.GetFullPath(args[1])); return 0; }
-            if (args.Length >= 1 && args[0] == "--uninstall") return Uninstall(args.Length > 1 && args[1] == "--quiet");
+            if (args.Length >= 1 && args[0] == "--uninstall") {
+                // --from-app: the settings window already asked; wait for the app (and its workers) to close
+                if (args.Length > 1 && args[1] == "--from-app") return Uninstall(false, true);
+                return Uninstall(args.Length > 1 && args[1] == "--quiet", false);
+            }
             return Install();
         } catch (Exception e) { MessageBox.Show(e.Message, "설치 실패"); return 1; }
     }
@@ -154,19 +158,34 @@ class Setup {
         l.TargetPath = exe; l.WorkingDirectory = Path.GetDirectoryName(exe); l.Save();
     }
 
-    static int Uninstall(bool quiet) {
-        if (!quiet && MessageBox.Show("GovParse Desktop을 제거합니다.\n\n" + AppDir + "\n\n내보낸 결과 파일, 설정, 그림 설명 기록은 지우지 않습니다.", "제거", MessageBoxButtons.OKCancel) != DialogResult.OK) return 0;
-        while (Running()) {
+    // app or bundled python worker still running from AppDir
+    static bool AnyRunning() {
+        if (Running()) return true;
+        foreach (var n in new[] { "python", "pythonw" })
+            foreach (var p in Process.GetProcessesByName(n)) {
+                try { if (p.MainModule.FileName.StartsWith(AppDir, StringComparison.OrdinalIgnoreCase)) return true; } catch { }
+            }
+        return false;
+    }
+
+    static int Uninstall(bool quiet, bool fromApp) {
+        if (fromApp) {
+            var until = DateTime.Now.AddSeconds(20);
+            while (AnyRunning() && DateTime.Now < until) System.Threading.Thread.Sleep(300);
+        }
+        if (!quiet && !fromApp && MessageBox.Show("GovParse Desktop을 제거합니다.\n\n" + AppDir + "\n\n내보낸 결과 파일, 설정, 그림 설명 기록은 지우지 않습니다.", "제거", MessageBoxButtons.OKCancel) != DialogResult.OK) return 0;
+        while (AnyRunning()) {
             if (MessageBox.Show("GovParse Desktop이 실행 중입니다. 닫은 뒤 다시 시도를 누르세요.", "제거", MessageBoxButtons.RetryCancel) != DialogResult.Retry) return 0;
         }
         foreach (var l in new[] { MenuLink, DesktopLink }) try { if (File.Exists(l)) File.Delete(l); } catch { }
         if (Directory.Exists(AppDir)) Directory.Delete(AppDir, true);
         try { Registry.CurrentUser.DeleteSubKeyTree(UninstallKey, false); } catch { }
-        // uninstall.exe cannot delete itself while running: remove it once this process has exited
+        if (!quiet) MessageBox.Show("제거했습니다.", "제거");
+        // uninstall.exe cannot delete itself while running: start the delete only after the last dialog,
+        // so this process has exited by the time it runs (it retries for ~10 s in case exit is slow)
         string self = Path.Combine(Root, "uninstall.exe");
         if (File.Exists(self))
-            Process.Start(new ProcessStartInfo("cmd.exe", "/c ping -n 3 127.0.0.1 >nul & del /f /q \"" + self + "\"") { CreateNoWindow = true, UseShellExecute = false });
-        if (!quiet) MessageBox.Show("제거했습니다.", "제거");
+            Process.Start(new ProcessStartInfo("cmd.exe", "/c for /l %i in (1,1,10) do (ping -n 2 127.0.0.1 >nul & del /f /q \"" + self + "\" 2>nul & if not exist \"" + self + "\" exit)") { CreateNoWindow = true, UseShellExecute = false });
         return 0;
     }
 }

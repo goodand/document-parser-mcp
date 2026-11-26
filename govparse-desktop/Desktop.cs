@@ -125,6 +125,13 @@ class Desktop : Form {
     readonly AxButton toHtml = new AxButton("HTML로 변환", AxKind.Secondary), toHwpx = new AxButton("HWPX로 변환", AxKind.Secondary);
     readonly AxButton openZip = new AxButton("압축 파일 보기", AxKind.Secondary);
     readonly OcrBox ocr;
+    // 표 고치기 (qt/SPEC.md §8): a separate mode of the result side panel
+    readonly TablePanel tables;
+    readonly AxButton tableBtn = new AxButton("표 고치기", AxKind.Secondary);
+    readonly FlowLayoutPanel tableBar = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, BackColor = Theme.Surface, Padding = new Padding(6, 2, 6, 2) };
+    readonly ToolTip tableTip = new ToolTip();
+    FlowLayoutPanel actions;
+    bool tableMode; RectangleF? picBox;   // selected table cell, in the shown PNG's pixels
     string source, resultPath, resultKind, resultJson, lastDir;
     // processing status strip: what is being read/rendered/exported right now, with elapsed time
     readonly Label stStructure = new Label { AutoSize = true, Padding = new Padding(10, 7, 14, 0) };
@@ -144,7 +151,8 @@ class Desktop : Form {
         resultPages = new PageView(worker, "아직 결과가 없습니다. 내보내기를 하거나 ‘결과 불러오기’로 기존 결과를 여세요.", null);
         figures = new FigurePanel(root, worker, i => orig.Show(i), () => orig.Pic.Invalidate());
         ocr = new OcrBox(worker, () => SelectedAssetFile()) { Dock = DockStyle.Bottom };
-        orig.Overlay = (pic, g) => figures.PaintOverlay(pic, g, orig.Page);
+        tables = new TablePanel(worker, Say, ShowPic) { Dock = DockStyle.Fill };
+        orig.Overlay = (pic, g) => figures.PaintOverlay(pic, g, orig.Page, orig.Renderer);
         figures.Reveal = f => orig.Reveal(f);
         orig.Action.Click += async (s, e) => { if (source == null) Pick(); else await orig.Retry(); };
         resultPages.Action.Click += async (s, e) => await resultPages.Retry();
@@ -158,7 +166,15 @@ class Desktop : Form {
         var settingsBtn = new AxButton("설정", AxKind.Ghost);
         top.Controls.Add(open); top.Controls.Add(load); top.Controls.Add(settingsBtn); top.Controls.Add(help); top.Controls.Add(fileName);   // file name last, so buttons never shift
         open.Click += (s, e) => Pick(); load.Click += async (s, e) => await LoadResult();
-        settingsBtn.Click += (s, e) => { using (var f = new SettingsForm(worker)) if (f.ShowDialog(this) == DialogResult.OK) Say("OCR 엔진을 바꿨습니다 · " + f.SavedLabel, Theme.Ok); };
+        settingsBtn.Click += async (s, e) => {
+            bool previewChanged = false;
+            using (var f = new SettingsForm(worker)) if (f.ShowDialog(this) == DialogResult.OK) {
+                Say("설정을 저장했습니다 · OCR " + f.SavedLabel + " · 미리보기 " + f.SavedPreviewLabel, Theme.Ok);
+                previewChanged = f.PreviewChanged;
+            }
+            // pages already drawn came from the other preview program: draw the document again, keeping the page
+            if (previewChanged && orig.DocPath != null) { int page = orig.Page; await orig.Load(orig.DocPath); if (page > 0 && page < orig.Pages) await orig.Show(page); }
+        };
         help.Click += (s, e) => { try { Process.Start(Path.Combine(root, "manual.html")); } catch { } };
         tabOrig.Click += (s, e) => SwitchTab(false); tabResult.Click += (s, e) => SwitchTab(true);
 
@@ -197,13 +213,15 @@ class Desktop : Form {
         assets.SelectedIndexChanged += (s, e) => SelectAsset();
         PictureClipboard.Attach(assets, () => SelectedAssetFile(),
             (m, ok) => Say(m, ok ? Theme.Ok : Theme.Warn));
-        var actions = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, BackColor = Theme.Surface, Padding = new Padding(6) };
+        actions = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, BackColor = Theme.Surface, Padding = new Padding(6) };
         actions.Controls.Add(openExternal); actions.Controls.Add(openFolder); actions.Controls.Add(openZip); actions.Controls.Add(toHtml); actions.Controls.Add(toHwpx);
         openZip.Visible = false;
         openZip.Click += async (s, e) => { var z = ZipOf(resultPath); if (z != null) await ShowInExplorer(z); };
         openExternal.Click += (s, e) => OpenExternal(); openFolder.Click += async (s, e) => { if (resultPath != null) await ShowInExplorer((Directory.Exists(resultPath) ? Path.Combine(resultPath, resultKind == "html" ? "document.html" : "document.json") : resultPath)); };
         toHtml.Click += async (s, e) => await Convert("html"); toHwpx.Click += async (s, e) => await Convert("hwpx");
-        side.Controls.Add(assets); side.Controls.Add(Rule(DockStyle.Top)); side.Controls.Add(resNotes); side.Controls.Add(resState); side.Controls.Add(resTitle); side.Controls.Add(ocr); side.Controls.Add(actions);
+        tableBar.Controls.Add(tableBtn); tableBar.Visible = false;
+        tableBtn.Click += (s, e) => ToggleTables();
+        side.Controls.Add(assets); side.Controls.Add(tables); side.Controls.Add(Rule(DockStyle.Top)); side.Controls.Add(tableBar); side.Controls.Add(resNotes); side.Controls.Add(resState); side.Controls.Add(resTitle); side.Controls.Add(ocr); side.Controls.Add(actions);
         origSplit.Panel1.Controls.Add(orig); origSplit.Panel2.Controls.Add(figures);
         resultSplit.Panel1.Controls.Add(resultPages); resultSplit.Panel1.Controls.Add(web); resultSplit.Panel1.Controls.Add(assetPic); resultSplit.Panel2.Controls.Add(side);
 
@@ -230,6 +248,7 @@ class Desktop : Form {
         FormClosing += (s, e) => { figures.Shutdown(); worker.Shutdown(); };   // only processes this app started
         resultSplit.Resize += (s, e) => FitResultPanel();
         assetPic.Resize += (s, e) => FitAssetPic();
+        assetPic.Paint += (s, e) => PaintPicBox(e.Graphics);
         Shown += (s, e) => { Task.Run((Action)ServeDesktop); Refresh2(); Say("Ctrl+O 또는 끌어다 놓기로 HWP/HWPX 문서를 여세요.", Theme.Muted); };
     }
 
@@ -481,6 +500,8 @@ class Desktop : Form {
         resTitle.Text = (sourceName != null ? sourceName + " → " : "") + Path.GetFileName(path);
         resNotes.Text = String.Join("\r\n", notes);
         web.Visible = kind == "html"; assetPic.Visible = kind == "json"; resultPages.Visible = kind == "pages";
+        if (tableMode) { tableMode = false; tables.Visible = false; resNotes.Visible = actions.Visible = true; }   // a new result leaves the mode
+        tableBtn.SetText("표 고치기"); tableBtn.Enabled = false; tableBar.Visible = kind == "json"; tables.Load(null); picBox = null;
         assets.Visible = ocr.Visible = kind == "json"; assets.Items.Clear(); assetPic.Image = null;
         openExternal.SetText(kind == "html" ? "브라우저에서 열기" : kind == "pages" ? "한글에서 열기" : "JSON 열기");
         toHtml.Visible = toHwpx.Visible = kind == "json"; toHtml.Enabled = toHwpx.Enabled = kind == "json";
@@ -523,6 +544,9 @@ class Desktop : Form {
                 missing += changed;
             }
             SetResState(saved, String.Format("미리보기 성공 · 자산 {0}개{1}", assets.Items.Count, missing > 0 ? " · 파일 없는 자산 " + missing + "개" : assets.Items.Count == 0 ? " (추출된 PNG 0개)" : ""), missing == 0);
+            tables.Load((ArrayList)idx["assets"]);
+            tableBtn.Enabled = tables.Count > 0;
+            tableTip.SetToolTip(tableBtn, tables.Count > 0 ? "표를 확인하고 고칩니다 (원본 칸 또는 이미지에서 읽은 표)" : "이 결과에는 표 이미지가 없습니다");
             if (assets.Items.Count > 0) assets.Items[0].Selected = true;
         }
         Refresh2();
@@ -537,7 +561,7 @@ class Desktop : Form {
         if (assets.SelectedItems.Count == 0) return;
         var a = (Dictionary<string, object>)assets.SelectedItems[0].Tag;
         if (!a.ContainsKey("file")) { var old0 = assetPic.Image; assetPic.Image = null; if (old0 != null) old0.Dispose(); ocr.Show(null); return; }   // table without an image
-        try { using (var f = Image.FromFile((string)a["file"])) { var old = assetPic.Image; var bmp = new Bitmap(f); assetPic.Image = bmp; FitAssetPic(); if (old != null) old.Dispose(); } } catch { assetPic.Image = null; }
+        try { using (var f = Image.FromFile((string)a["file"])) { var old = assetPic.Image; var bmp = new Bitmap(f); assetPic.Image = bmp; assetPic.Tag = a["file"]; FitAssetPic(); if (old != null) old.Dispose(); } } catch { assetPic.Image = null; assetPic.Tag = null; }
         string st = (string)a["ocr_status"];
         ocr.Show(st == "ok" || st == "empty" ? ((ArrayList)a["ocr_texts"]).Cast<string>().ToArray() : null);
     }
@@ -589,6 +613,38 @@ class Desktop : Form {
             string src = rep.ContainsKey("source") ? rep["source"] as string : null;
             return String.IsNullOrEmpty(src) ? null : Path.GetFileName(src);
         } catch { return null; }
+    }
+    // 표 고치기 on/off: the asset list, notes, OCR box and actions give way to the table list and grid
+    void ToggleTables() {
+        tableMode = !tableMode;
+        assets.Visible = ocr.Visible = resNotes.Visible = actions.Visible = !tableMode;
+        tables.Visible = tableMode;
+        tableBtn.SetText(tableMode ? "표 고치기 닫기" : "표 고치기");
+        if (tableMode) tables.ShowCurrent();
+        else {
+            picBox = null; SelectAsset();
+            int n = tables.Unsaved;
+            if (n > 0) Say("저장하지 않은 표 " + n + "개가 있습니다 · ‘표 고치기’에서 저장하세요", Theme.Warn);
+        }
+    }
+    // picture for the table panel; box = selected cell in that picture's pixels (null: no outline)
+    void ShowPic(string file, RectangleF? box) {
+        picBox = box;
+        if (file == null || !File.Exists(file)) { var o = assetPic.Image; assetPic.Image = null; if (o != null) o.Dispose(); return; }
+        if (assetPic.Tag as string != file || assetPic.Image == null) {
+            try { using (var f = Image.FromFile(file)) { var old = assetPic.Image; assetPic.Image = new Bitmap(f); assetPic.Tag = file; FitAssetPic(); if (old != null) old.Dispose(); } }
+            catch { assetPic.Image = null; assetPic.Tag = null; }
+        }
+        assetPic.Invalidate();
+    }
+    void PaintPicBox(Graphics g) {
+        var img = assetPic.Image; if (!tableMode || picBox == null || img == null) return;
+        float k, ox, oy, cw = assetPic.ClientSize.Width, ch = assetPic.ClientSize.Height;
+        if (assetPic.SizeMode == PictureBoxSizeMode.Zoom) k = Math.Min(cw / img.Width, ch / img.Height); else k = 1f;
+        ox = (cw - img.Width * k) / 2; oy = (ch - img.Height * k) / 2;
+        var b = picBox.Value;
+        using (var pen = new Pen(Theme.Primary, Math.Max(2f, Theme.Px(2))))
+            g.DrawRectangle(pen, ox + b.X * k, oy + b.Y * k, b.Width * k, b.Height * k);
     }
     void FitAssetPic() {
         var b = assetPic.Image; if (b == null) return;

@@ -310,8 +310,12 @@ class FigurePanel : Panel {
     }
 
     // Draws figure (solid teal) and caption candidate (dashed orange) boxes over the preview.
-    public void PaintOverlay(PictureBox viewer, Graphics g, int shownPage) {
+    public void PaintOverlay(PictureBox viewer, Graphics g, int shownPage, string renderer = "rhwp") {
         if (Current == null || viewer.Image == null) return;
+        if (renderer == "hancom-pdf") {   // boxes are measured on rhwp pages; Hancom pages break differently
+            TextRenderer.DrawText(g, "한컴 PDF로 표시 중에는 그림 위치를 표시하지 않습니다 — 설정에서 기본 미리보기로 바꾸면 보입니다", Font, new Point(12, 12), Warn, Theme.WarnBg);
+            return;
+        }
         var loc = (Dictionary<string, object>)Current["location"];
         if (!(bool)loc["verified"]) {
             TextRenderer.DrawText(g, "이 그림은 원본 화면에서 위치를 표시하지 못했습니다 — 오른쪽 ‘문서 안 위치’를 보세요", Font, new Point(12, 12), Warn, Theme.WarnBg);

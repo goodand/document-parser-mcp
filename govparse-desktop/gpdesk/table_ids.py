@@ -13,6 +13,11 @@ def _walk(blocks):
                 yield from _walk(cell.get("blocks"))
 
 
+def iter_table_nodes(ir: dict):
+    """Every table block, parents before the tables nested in their cells."""
+    yield from _walk(ir.get("body"))
+
+
 def iter_table_images(ir: dict):
     """(table_id, [result-relative PNG paths]) for every rendered table, in document order."""
     for t in _walk(ir.get("body")):

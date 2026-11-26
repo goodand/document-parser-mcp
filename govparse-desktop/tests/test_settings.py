@@ -131,3 +131,71 @@ def test_rapidocr_unavailable_without_bundle_and_engine(monkeypatch):
     monkeypatch.setattr("gpdesk.config.load", no_engine)
     ok, why = ocr_engines.is_available("rapidocr")
     assert ok is False and why
+
+
+# ---- 미리보기 방식 (rhwp | hancom) ----------------------------------------------
+
+def test_preview_defaults_to_rhwp_and_rejects_unknown(monkeypatch, tmp_path):
+    monkeypatch.setattr(settings, "settings_path", lambda: tmp_path / "settings.json")
+    assert settings.load()["preview"] == "rhwp"
+    settings.update(preview="hancom")
+    assert settings.load()["preview"] == "hancom"
+    with pytest.raises(ValueError):
+        settings.update(preview="pdfjs")
+
+
+def test_preview_choices_mark_hancom_unavailable_without_hancom(monkeypatch):
+    from gpdesk import desktop_worker as w
+
+    monkeypatch.setattr(w, "hancom_installed", lambda: False)
+    by_id = {c["id"]: c for c in w.preview_choices()}
+    assert by_id["rhwp"]["available"] and not by_id["hancom"]["available"]
+    assert "한컴" in by_id["hancom"]["reason"]
+
+
+class _Doc:
+    page_count = 3
+
+    def render_png(self, page, scale, max_pixels):
+        return b"rhwp-png"
+
+
+def _fake_source(monkeypatch, w):
+    class S:
+        def __init__(self, path):
+            self.path, self.doc = Path(path), _Doc()
+    monkeypatch.setattr(w, "Source", S)
+
+
+def _fake_pdf(monkeypatch, w, tmp_path):
+    import pymupdf
+
+    pdf = tmp_path / "h.pdf"
+    d = pymupdf.open(); d.new_page(); d.new_page(); d.save(str(pdf)); d.close()
+    monkeypatch.setattr(w, "hancom_pdf", lambda p: pdf)
+
+
+@pytest.mark.parametrize("choice,installed,expected", [
+    ("rhwp", True, (3, "rhwp")),
+    ("hancom", True, (2, "hancom-pdf")),
+    ("hancom", False, (3, "rhwp")),          # chosen but Hancom missing: fall back, do not fail
+])
+def test_preview_follows_setting(monkeypatch, tmp_path, choice, installed, expected):
+    from gpdesk import desktop_worker as w
+
+    monkeypatch.setattr(settings, "settings_path", lambda: tmp_path / "settings.json")
+    settings.update(preview=choice)
+    monkeypatch.setattr(w, "hancom_installed", lambda: installed)
+    _fake_source(monkeypatch, w)
+    _fake_pdf(monkeypatch, w, tmp_path)
+    assert w.preview(tmp_path / "x.hwpx", tmp_path / "out.png", 0) == expected
+    assert (tmp_path / "out.png").stat().st_size > 0
+
+
+def test_worker_settings_mode_lists_preview_choices(monkeypatch, tmp_path):
+    from gpdesk import desktop_worker as w
+
+    monkeypatch.setattr(settings, "settings_path", lambda: tmp_path / "settings.json")
+    out = w._dispatch(["settings-set", "preview", "hancom"])
+    assert out["settings"]["preview"] == "hancom"
+    assert [c["id"] for c in out["previews"]] == ["rhwp", "hancom"]

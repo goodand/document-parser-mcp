@@ -184,9 +184,37 @@ def img_srcs(html: str) -> list[str]:
 
 
 # ------------------------------------------------------------------ modes
+def hancom_installed() -> bool:
+    if sys.platform != "win32":
+        return False
+    try:
+        import winreg
+
+        winreg.CloseKey(winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, r"HWPFrame.HwpObject"))
+        return True
+    except OSError:
+        return False
+
+
+def preview_choices() -> list[dict]:
+    ok = hancom_installed()
+    return [
+        {"id": "rhwp", "label": "기본 미리보기 (rhwp)", "available": True, "reason": "",
+         "description": "빠르게 표시하고, 그림 목록에서 고른 그림의 위치를 화면에 표시합니다. "
+                        "드물게 표 칸 안의 그림과 표가 겹쳐 보일 수 있습니다."},
+        {"id": "hancom", "label": "한컴오피스로 그리기 (한컴 PDF)", "available": ok,
+         "reason": "" if ok else "이 PC에 한컴오피스(한글)가 없습니다",
+         "description": "원본과 같은 모양으로 표시합니다. 문서를 처음 열 때 전체를 PDF로 바꾸므로 큰 문서는 "
+                        "몇 분 걸리고(이후에는 저장된 PDF 사용), 그림 위치 표시는 하지 않습니다."},
+    ]
+
+
 def preview(path: Path, png: Path, page: int) -> tuple[int, str]:
+    from . import settings
+
     src = Source(path)
-    if src.doc is not None:
+    use_hancom = settings.load()["preview"] == "hancom" and hancom_installed()
+    if src.doc is not None and not use_hancom:
         png.write_bytes(src.doc.render_png(int(page), scale=1.1, max_pixels=8000000))
         return src.doc.page_count, "rhwp"
     import pymupdf
@@ -329,6 +357,112 @@ def table_images(path: Path, ir: dict, out_dir: Path, progress) -> dict | None:
             "manifest": f"{rel}/manifest.json", "missing": missing}
 
 
+def _candidate_builder():
+    """The engine's native table -> editable candidate function (table JSON v1.0), or None for an older engine."""
+    try:
+        from govparse.table_edit import build_native_table_candidate
+    except Exception:  # noqa: BLE001
+        return None
+    return build_native_table_candidate
+
+
+def table_candidates(path: Path, ir: dict, out: Path, progress) -> dict | None:
+    """One editable-table candidate per IR table that has a table_id, read from the source cells (no OCR).
+
+    Written to <out>/tables/table-<tag>.json (tag = the same 12 hex digits as the table's PNG names, so slashes in
+    table_id never reach a file name). Each IR table block gets table_json {status, path, reason}.
+    Returns the summary, or None when the engine has no candidate builder.
+    """
+    from .table_ids import iter_table_nodes
+
+    build = _candidate_builder()
+    if build is None:
+        return None
+    nodes = [(n["table_id"], n) for n in iter_table_nodes(ir) if n.get("table_id")]
+    digest = _sha(path)
+    folder = out / "tables"
+    folder.mkdir(parents=True, exist_ok=True)
+    built = []
+    for i, (sid, node) in enumerate(nodes):
+        progress({"stage": "표 편집 후보", "done": i, "total": len(nodes)})
+        tag = hashlib.sha256(f"{digest}:{sid}".encode()).hexdigest()[:12]
+        rel = f"tables/table-{tag}.json"
+        try:
+            cand = build(ir, sid, asset_id=f"table-{tag}")
+            (out / rel).write_text(json.dumps(cand, ensure_ascii=False, indent=1), "utf-8")
+            node["table_json"] = {"status": cand.get("status") or "ready", "path": rel, "reason": None}
+            built.append(sid)
+        except Exception as e:  # noqa: BLE001 - one odd table must not stop the export
+            node["table_json"] = {"status": "failed", "path": None, "reason": str(e)[:200]}
+    progress({"stage": "표 편집 후보", "done": len(nodes), "total": len(nodes)})
+    return {"tables": len(nodes), "ready": len(built), "failed": len(nodes) - len(built)}
+
+
+def _image_table_reader():
+    """The engine's image -> table grid function (RapidTable SLANetPlus), or None for an engine without it."""
+    try:
+        from govparse.image_table import extract_table_from_image
+    except Exception:  # noqa: BLE001
+        return None
+    return extract_table_from_image
+
+
+def image_table(png: Path, out: Path, with_ocr: bool = True, table_id: str | None = None) -> dict:
+    """Read one table picture into an editable candidate (status review) and write it to `out`.
+
+    Never written over a table read from the source document: the caller passes a separate name
+    (tables/<png stem>.image.json). The image path is stored as a file name only, so the result folder can move.
+    """
+    from . import ocr_engines
+
+    read = _image_table_reader()
+    if read is None:
+        raise RuntimeError("이 엔진에는 이미지에서 표를 읽는 기능이 없습니다 (govparse.image_table)")
+    png, out = Path(png), Path(out)
+    kw: dict = {"include_ocr": bool(with_ocr)}
+    models = ocr_engines.bundled_models()
+    if models is not None and (models.parent / "table-structure" / "slanet-plus.onnx").is_file():
+        kw["model_path"] = models.parent / "table-structure" / "slanet-plus.onnx"
+    if with_ocr:
+        kw["ocr_model_dir"] = ocr_engines.rapidocr_runtime()[1]
+    cand = read(png, **kw)
+    if isinstance(cand.get("image"), dict):
+        cand["image"]["path"] = png.name
+    cand.setdefault("table_id", table_id)
+    cand.setdefault("asset_id", png.stem)
+    if not cand.get("cells"):
+        cand["status"] = "no_grid"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out.with_name(f".{out.name}.{os.getpid()}.tmp")
+    try:
+        tmp.write_text(json.dumps(cand, ensure_ascii=False, indent=1), "utf-8")
+        os.replace(tmp, out)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
+    checks = [c.get("text_check") for c in cand.get("cells") or []]
+    return {"file": str(out), "status": cand["status"], "rows": cand.get("rows", 0), "cols": cand.get("cols", 0),
+            "cells": len(checks), "ocr_cells": checks.count("review"), "warnings": cand.get("warnings") or []}
+
+
+def table_save(engine_file: Path, state_file: Path) -> dict:
+    """Save a person's corrections (C# 표 고치기) by the shared rules in gpdesk.table_edit.
+
+    state_file: {"rows", "cols", "cells": [v1.0 cells incl. edited and engine extras], "structure_changed", "history"}.
+    The engine candidate is never written; corrections go to <name>.edited.json (or are removed when equal).
+    """
+    from .table_edit import TableDoc, _rows
+
+    state = json.loads(Path(state_file).read_text("utf-8"))
+    doc = TableDoc.load(engine_file)
+    doc.rows = _rows(state)
+    doc.structure_changed = bool(state.get("structure_changed"))
+    doc.history = list(state.get("history") or [])
+    out = doc.save()
+    return {"saved": str(out) if out else None, "edited_cells": doc.edited_cells(), "differs": doc.differs_from_engine,
+            "confirmed": doc.confirmed, "stale_edit": doc.stale_edit}
+
+
 def run(mode: str, path: Path, out: Path, ocr: bool = False, progress=lambda e: None) -> dict:
     progress({"stage": "구조 읽기"})
     src = Source(path)
@@ -358,6 +492,14 @@ def run(mode: str, path: Path, out: Path, ocr: bool = False, progress=lambda e: 
             notes.append("표별 이미지: 이 엔진에는 표마다 그리는 기능이 없어 쪽 단위 표 캡처로 대신함")
         if tables is not None and tables["missing"]:
             notes.append(f"검토가 필요한 표 {len(tables['missing'])}개 · 결과 보기 목록에 사유 표시")
+        if tables is not None:
+            cands = table_candidates(Path(path), ir, out, progress)
+            if cands is None:
+                notes.append("표 고치기: 이 엔진에는 표 편집 후보를 만드는 기능이 없음")
+            else:
+                tables["candidates"] = cands
+                if cands["failed"]:
+                    notes.append(f"표 편집 후보 실패 {cands['failed']}개 (표 {cands['tables']}개 중)")
         try:
             if tables is not None:
                 raise StopIteration  # every table has its own image or a recorded reason: no page captures
@@ -610,6 +752,10 @@ def index(json_path: Path) -> dict:
                        choice=a.get("choice"), source_pages=pages, table_type=table_type,
                        table_type_label=f"표 유형(추정) {table_type_labels.get(table_type, '검토 필요')}",
                        text=label + detail)
+            tj = a.get("table_json")
+            if isinstance(tj, dict):   # files are found relative to this result folder (moved or unzipped results work)
+                row["table_json"] = {"status": tj.get("status"), "reason": tj.get("reason") or "",
+                                     "file": str(base / tj["path"]) if tj.get("path") else None}
         assets.append(row)
     return {"assets": [a for a in assets if a["exists"]], "missing": [a["path"] for a in assets if not a["exists"]],
             "capture_state": meta.get("capture_state"), "source_name": meta.get("source_name"),
@@ -679,6 +825,11 @@ def _dispatch(argv: list[str]):
         return index(Path(argv[1]))
     if mode == "ocr":
         return ocr(Path(argv[1]))
+    if mode == "table-save":    # engine_candidate.json state.json
+        return table_save(Path(argv[1]), Path(argv[2]))
+    if mode == "image-table":   # png out.json [ocr|no-ocr] [table_id]
+        return image_table(Path(argv[1]), Path(argv[2]), with_ocr=(argv[3] if len(argv) > 3 else "ocr") == "ocr",
+                           table_id=argv[4] if len(argv) > 4 else None)
     if mode == "zip":
         return zip_result(Path(argv[1]), Path(argv[2]), progress=emit_progress)
     if mode in ("settings", "settings-set"):
@@ -687,7 +838,7 @@ def _dispatch(argv: list[str]):
         if mode == "settings-set":
             settings.update(**{argv[1]: argv[2]})
         return {"settings": settings.load(), "engines": ocr_engines.list_engines(),
-                "path": str(settings.settings_path())}
+                "previews": preview_choices(), "path": str(settings.settings_path())}
     return run(mode, Path(argv[1]), Path(argv[2]), progress=emit_progress)
 
 

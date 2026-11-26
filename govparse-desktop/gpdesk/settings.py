@@ -14,7 +14,8 @@ import uuid
 from pathlib import Path
 
 APP = "GovParse Desktop"
-DEFAULTS = {"ocr_engine": "rapidocr"}
+DEFAULTS = {"ocr_engine": "rapidocr", "preview": "rhwp"}
+PREVIEW_IDS = ("rhwp", "hancom")   # how the 원본 tab draws pages
 
 
 def settings_path() -> Path:
@@ -44,6 +45,8 @@ def update(**changes) -> dict:
         raise ValueError(f"알 수 없는 설정: {sorted(unknown)}")
     if "ocr_engine" in changes and changes["ocr_engine"] not in ENGINE_IDS:
         raise ValueError(f"알 수 없는 OCR 엔진: {changes['ocr_engine']}")
+    if "preview" in changes and changes["preview"] not in PREVIEW_IDS:
+        raise ValueError(f"알 수 없는 미리보기 방식: {changes['preview']}")
     data = load()
     data.update(changes)
     path = settings_path()
