@@ -98,6 +98,14 @@ def test_embedded_without_text(window, loaded):
     assert _rows(window)[0][2] == "문서에 들어 있던 그림"
 
 
+def test_source_page_selection_is_labeled_as_a_whole_page(window, loaded):
+    summary = {"tables": 1, "rendered": 0, "png": 0, "source_page_tables": 1, "missing": []}
+    loaded(assets=[{"origin": "table_source_page", "path": "assets/tables/page-2.png",
+                    "page": 2, "text": "본문 1번째 표 · 원본 2쪽 전체"}], table_images=summary)
+    assert _rows(window)[0][1:3] == ["원본 쪽", "본문 1번째 표 · 원본 2쪽 전체"]
+    assert "표 1개는 원본 쪽으로 표시" in text(window, "resNotes")
+
+
 def test_tables_without_image_are_listed_with_reason(window, loaded):
     ti = {"tables": 3, "rendered": 2, "png": 2, "not_rendered": 1,
           "missing": [{"table_id": "s0/b5/t2", "label": "본문 3번째 표", "reason_text": "원본 표와 구조·글자가 정확히 일치하지 않음"}]}

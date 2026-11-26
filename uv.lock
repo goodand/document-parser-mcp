@@ -290,7 +290,9 @@ source = { editable = "." }
 dependencies = [
     { name = "lxml" },
     { name = "mcp", extra = ["cli"] },
+    { name = "numpy" },
     { name = "olefile" },
+    { name = "opencv-python-headless" },
     { name = "opendataloader-pdf" },
     { name = "pandas" },
     { name = "pillow" },
@@ -330,8 +332,10 @@ dev = [
 requires-dist = [
     { name = "lxml", specifier = ">=5.3" },
     { name = "mcp", extras = ["cli"], specifier = ">=1.29.1,<2" },
+    { name = "numpy", specifier = ">=1.26" },
     { name = "olefile", specifier = ">=0.47" },
     { name = "onnxruntime", marker = "extra == 'table-ocr'", specifier = "==1.31.0" },
+    { name = "opencv-python-headless", specifier = "==5.0.0.93" },
     { name = "opendataloader-pdf", specifier = ">=0.8" },
     { name = "pandas", specifier = ">=2.2" },
     { name = "pdf2image", marker = "extra == 'ocr'", specifier = ">=1.17" },

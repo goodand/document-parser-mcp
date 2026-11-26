@@ -47,7 +47,7 @@ def test_table_image_list_manifest_has_ids_and_no_failures(tmp_path, monkeypatch
 
 def test_table_image_selection_and_unknown_id_reported(tmp_path, monkeypatch):
     _setup(tmp_path, monkeypatch)
-    import govparse.table_images as images
+    import govparse.table_selection as images
 
     def fake_render(source, ir, out_dir, table_ids=None):
         ids = sorted(table_ids or [])
@@ -59,7 +59,7 @@ def test_table_image_selection_and_unknown_id_reported(tmp_path, monkeypatch):
                             for key in ids},
                 "rendered_count": sum(key.endswith("/t0") for key in ids)}
 
-    monkeypatch.setattr(images, "extract_table_images_by_id", fake_render)
+    monkeypatch.setattr(images, "extract_selected_table_images", fake_render)
     result = json.loads(M.extract_hwp_table_images("fixture.hwp", ["s0/b1/t0", "missing/id"]))
     assert result["status"] == "partial"
     assert result["rendered_count"] == 1

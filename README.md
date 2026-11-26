@@ -8,6 +8,20 @@ Python 패키지와 실행 명령은 호환성을 위해 `govparse`, `govparse-m
 
 [GovParse Desktop](govparse-desktop/README.md)에서 HWP/HWPX 문서를 미리 보고 그림을 검토하거나 HWPX로 내보낼 수 있습니다. 기존 Windows x64 앱과 PySide6 미리보기 버전의 소스가 함께 있습니다. PySide6 화면 테스트는 Windows에서 실행했고 macOS 실기 검증은 남아 있습니다.
 
+## 표 이미지와 원본 쪽 확인
+
+Desktop에서 **JSON + PNG**를 내보내거나 MCP의 `extract_hwp_table_images`를 호출하면 같은 선택기를 사용합니다. `list_only=true`는 이미지 생성 없이 표 ID를 조회합니다. 표별 결과는 manifest의 `tables[표 ID]`에서 확인할 수 있습니다.
+
+| `choice` | 받을 수 있는 결과 |
+| --- | --- |
+| `november` | 표를 따로 렌더한 PNG |
+| `october` | 원본 쪽에서 검출한 표를 자른 PNG |
+| `source_crop` | 표 테두리 밖의 글자나 화살표까지 포함해 원본에서 다시 자른 PNG |
+| `source_page` | 쓸 만한 표 이미지를 확인하기 어려울 때 제공하는 원본 쪽 전체 |
+| `review` | 이미지 선택과 원본 쪽 연결에 추가 확인이 필요한 표 |
+
+`paths`는 출력 폴더 기준 상대 경로이며, 여러 장이면 순서대로 읽습니다. `source_pages`는 1부터 시작하는 원본 쪽 번호입니다. 원본 미리보기를 만들 수 없어 개별 렌더만 제공한 경우에는 `selection_warning`이 기록됩니다.
+
 ## 설치
 
 Python 3.12 또는 3.13과 uv를 준비합니다. 저장소에서:

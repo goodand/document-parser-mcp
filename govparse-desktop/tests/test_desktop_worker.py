@@ -106,8 +106,9 @@ def test_index_lists_assets_with_origin_and_caption(src, tmp_path):
     dw.run("json", src, out, ocr=False)
     idx = dw.index(out / "document.json")
     emb = [a for a in idx["assets"] if a["origin"] == "embedded_picture"]
-    tbl = [a for a in idx["assets"] if a["origin"] == "table_image"]  # per-table PNGs replace page captures
-    assert len(emb) == 4 and tbl and all(Path(a["file"]).is_file() for a in idx["assets"])
+    tbl = [a for a in idx["assets"] if a["origin"] in {"table_image", "table_source_page"}]
+    assert len(emb) == 4 and len({a["table_id"] for a in tbl}) == 3
+    assert all(Path(a["file"]).is_file() for a in idx["assets"])
     assert any("사업 구성도" in a["text"] for a in emb)
     assert all(a["table_id"] and a["label"] for a in tbl) and idx["convertible"] is True
 

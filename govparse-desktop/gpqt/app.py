@@ -846,8 +846,8 @@ class MainWindow(QMainWindow):
                 notes.append(f"· 그림 {r.get('pictures')}개 복원 · 원문 캡션 {r.get('source_captions')}개 · 사용자 연결 {r.get('user_links_sidecar')}건은 .links.json")
             if rep.get("bundle"):
                 c = rep["bundle"]["counts"]
-                if c.get("table_image"):
-                    notes.append(f"· 내장 그림 {c.get('embedded_picture')}개 · 표 이미지 {c['table_image']}장 (표마다 따로)")
+                if rep["bundle"].get("table_images") is not None:
+                    notes.append(f"· 내장 그림 {c.get('embedded_picture')}개 · 표 이미지 {c.get('table_image', 0)}장")
                 else:
                     t = c.get("rendered_table_capture")
                     notes.append(f"· 내장 그림 {c.get('embedded_picture')}개 · 표 캡처 {'미확인' if t is None else f'{t}장'}")
@@ -914,6 +914,8 @@ class MainWindow(QMainWindow):
                 kind_text, info = "내장 그림", txt or "문서에 들어 있던 그림"
             elif origin == "table_image":
                 kind_text, info = "표 이미지", txt
+            elif origin == "table_source_page":
+                kind_text, info = "원본 쪽", txt
             else:
                 kind_text, info = "표 캡처", f"미리보기 {a.get('page')}쪽의 표 영역 (어느 표인지는 확인되지 않음)"
             it = QTreeWidgetItem([base_name(a["path"]), kind_text, info, src])
@@ -925,8 +927,10 @@ class MainWindow(QMainWindow):
         ti = idx.get("table_images")
         if ti:
             line = f"· 표 {ti['tables']}개 중 {ti['rendered']}개 이미지 생성 · PNG {ti['png']}장"
-            if ti.get("not_rendered"):
-                line += f" · 미생성 {ti['not_rendered']}개는 목록 끝에 사유 표시"
+            if ti.get("source_page_tables"):
+                line += f" · 표 {ti['source_page_tables']}개는 원본 쪽으로 표시"
+            if ti.get("missing"):
+                line += f" · 미생성 {len(ti['missing'])}개는 목록 끝에 사유 표시"
             notes.append(line)
             for m in ti.get("missing") or []:
                 it = QTreeWidgetItem(["(이미지 없음)", "표 이미지 미생성", f"{m['label']} · {m['reason_text']}", src])

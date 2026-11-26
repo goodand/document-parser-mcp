@@ -86,8 +86,20 @@ class Source:
     def builder(self) -> str:
         return "rhwp" if self.doc is not None else "gpdesk.owpml_ir"
 
-    def ir(self) -> dict:
+    def ir(self, *, selection_dir: Path | None = None) -> dict:
         if self.doc is not None:
+            if selection_dir is not None:
+                try:
+                    from govparse.hwp_source import extract_source
+                except ModuleNotFoundError as exc:
+                    if exc.name not in {"govparse", "govparse.hwp_source"}:
+                        raise
+                else:
+                    # Selection uses the same native picture placements and cleaned cell
+                    # paragraphs as MCP. Raw rhwp IR omits this evidence.
+                    with tempfile.TemporaryDirectory(dir=selection_dir) as temp:
+                        manifest = extract_source(self.path, Path(temp))
+                        return json.loads((Path(temp) / manifest["document_path"]).read_text("utf-8"))
             return json.loads(self.doc.to_ir_json())
         from .owpml_ir import build_ir
 
@@ -231,6 +243,8 @@ TABLE_REASONS = {
     "table_structure_or_text_not_exact": "원본 표와 구조·글자가 정확히 일치하지 않음",
     "rendered_pages_are_blank": "그려진 쪽이 비어 있음",
     "table_id_not_present_in_ir": "구조에 없는 표",
+    "no_verified_candidate_or_page": "개별 표 이미지와 원본 쪽을 확인할 수 없음",
+    "no_complete_candidate": "온전한 개별 표 이미지를 확인할 수 없음",
 }
 TABLE_REASON_PREFIX = {"isolation_failed": "표 분리 실패", "rhwp_render_failed": "표 그리기 실패",
                        "crop_failed": "여백 자르기 실패", "source_conversion_failed": "원본 변환 실패"}
@@ -259,67 +273,66 @@ def table_label(table_id: str) -> str:
 
 
 def _table_renderer():
-    """The engine's per-table renderer, or None for an engine without it."""
+    """Resolve the same table-image selector as the MCP export."""
     try:
-        from govparse.table_images import extract_table_images_by_id, iter_table_nodes
-    except Exception:  # noqa: BLE001
+        from govparse.table_selection import extract_selected_table_images
+    except ModuleNotFoundError as exc:
+        if exc.name not in {"govparse", "govparse.table_selection"}:
+            raise
         return None
-    return extract_table_images_by_id, iter_table_nodes
+    from govparse.table_images import iter_table_nodes
+
+    return extract_selected_table_images, iter_table_nodes
 
 
 def table_images(path: Path, ir: dict, out_dir: Path, progress) -> dict | None:
-    """One PNG per table (several for a table split over pages), matched against the source XML by the engine.
-
-    Annotates every IR table block with table_id and table_image {status, paths (result-relative), reason}.
-    Returns the summary, or None when the engine has no per-table renderer.
-    """
-    import threading
-
+    """Record individual crops, source-page fallbacks and review decisions on their native table IDs."""
     renderer = _table_renderer()
     if renderer is None:
         return None
     extract, iter_nodes = renderer
     nodes = list(iter_nodes(ir))
     total = len(nodes)
-    digest = _sha(path)
-    tags = {hashlib.sha256(f"{digest}:{sid}".encode()).hexdigest()[:12] for sid, _ in nodes}
-    stop = threading.Event()
-
-    def watch():  # the engine call has no callback: count tables whose PNGs have appeared
-        while not stop.wait(1.0):
-            seen = {p.name[6:18] for p in out_dir.glob("table-*.png")} if out_dir.is_dir() else set()
-            progress({"stage": "표 이미지", "done": len(seen & tags), "total": total, "detail": "표마다 따로 그리는 중"})
-
-    progress({"stage": "표 이미지", "done": 0, "total": total})
-    t = threading.Thread(target=watch, daemon=True)
-    t.start()
-    try:
-        manifest = extract(path, ir, out_dir) if total else {"tables": {}}
-    finally:
-        stop.set()
-        t.join()
+    progress({"stage": "표 이미지", "done": 0, "total": total, "detail": "표 후보와 원본 쪽 대조 중"})
+    manifest = extract(path, ir, out_dir)
     progress({"stage": "표 이미지", "done": total, "total": total})
     rel = out_dir.relative_to(out_dir.parents[1]).as_posix()  # assets/tables
     rows = manifest.get("tables", {})
-    not_rendered = []
+    missing = []
+    rendered = png = source_page_tables = source_page_png = 0
     for sid, node in nodes:
-        rec = rows.get(sid) or {"status": "unmatched", "paths": [], "reason": "table_id_not_present_in_ir"}
-        ok = rec.get("status") == "rendered"
+        rec = rows.get(sid) or {"choice": "review", "reason": "table_id_not_present_in_ir"}
+        choice = rec["choice"]
+        paths = [f"{rel}/{p}" for p in rec.get("paths", [])]
+        pages = rec.get("source_pages") or []
+        reason = rec.get("reason")
+        if choice == "source_page" and paths and len(pages) == len(paths):
+            status = "source_page"
+            source_page_tables += 1
+            source_page_png += len(paths)
+        elif choice in {"november", "october", "source_crop"} and paths:
+            status = "rendered"
+            rendered += 1
+            png += len(paths)
+        else:
+            status, paths = "unmatched", []
+            reason = reason or "개별 표 이미지와 원본 쪽을 확인할 수 없음"
+            missing.append({"table_id": sid, "label": table_label(sid), "status": status,
+                            "reason": reason, "reason_text": table_reason(reason)})
         node["table_id"] = sid
-        node["table_image"] = {"status": rec.get("status"), "paths": [f"{rel}/{p}" for p in rec.get("paths") or []] if ok else [],
-                               "reason": None if ok else rec.get("reason")}
-        if not ok:
-            not_rendered.append({"table_id": sid, "label": table_label(sid), "status": rec.get("status"),
-                                 "reason": rec.get("reason"), "reason_text": table_reason(rec.get("reason"))})
-    return {"tables": total, "rendered": total - len(not_rendered), "not_rendered": len(not_rendered),
-            "png": sum(len(n["table_image"]["paths"]) for _, n in nodes), "manifest": f"{rel}/manifest.json",
-            "missing": not_rendered}
+        node["table_image"] = {"status": status, "choice": choice, "paths": paths, "source_pages": pages,
+                               "reason": None if status == "rendered" else reason}
+        if rec.get("selection_warning"):
+            node["table_image"]["selection_warning"] = rec["selection_warning"]
+    return {"tables": total, "rendered": rendered, "not_rendered": total - rendered, "png": png,
+            "source_page_tables": source_page_tables, "source_page_png": source_page_png,
+            "manifest": f"{rel}/manifest.json", "missing": missing}
 
 
 def run(mode: str, path: Path, out: Path, ocr: bool = False, progress=lambda e: None) -> dict:
     progress({"stage": "구조 읽기"})
     src = Source(path)
-    ir = src.ir()
+    ir = src.ir(selection_dir=out if mode == "json" else None)
     assets = src.asset_bytes(ir)
     progress({"stage": "그림 연결"})
     figs = _link_figures(src, ir)
@@ -343,8 +356,8 @@ def run(mode: str, path: Path, out: Path, ocr: bool = False, progress=lambda e: 
             notes.append(f"표별 이미지 실패 · 쪽 단위 표 캡처로 대신함 ({str(e)[:120]})")
         if tables is None and not any(n.startswith("표별 이미지") for n in notes):
             notes.append("표별 이미지: 이 엔진에는 표마다 그리는 기능이 없어 쪽 단위 표 캡처로 대신함")
-        if tables is not None and tables["not_rendered"]:
-            notes.append(f"표 이미지 미생성 {tables['not_rendered']}개 (표 {tables['tables']}개 중) · 결과 보기 목록에 사유 표시")
+        if tables is not None and tables["missing"]:
+            notes.append(f"검토가 필요한 표 {len(tables['missing'])}개 · 결과 보기 목록에 사유 표시")
         try:
             if tables is not None:
                 raise StopIteration  # every table has its own image or a recorded reason: no page captures
@@ -556,10 +569,19 @@ def index(json_path: Path) -> dict:
                "exists": f.is_file(), "ocr_status": o.get("status", "not_run"),
                "ocr_texts": o.get("texts", []),
                "text": " / ".join(text_by_path.get(a["path"], []))}
-        if a["origin"] == "table_image":
+        if a["origin"] in {"table_image", "table_source_page"}:
             label = table_label(a["table_id"])
+            pages = a.get("source_pages") or []
+            if a["origin"] == "table_source_page":
+                detail = f" · 원본 {a['page']}쪽 전체"
+            else:
+                detail = f" · {a['part']}/{a['parts']}쪽 조각" if a["parts"] > 1 else ""
+                if pages:
+                    detail += " · 원본 " + ", ".join(map(str, pages)) + "쪽"
+            if a.get("selection_warning"):
+                detail += " · 원본 쪽 대조 미완료"
             row.update(table_id=a["table_id"], part=a["part"], parts=a["parts"], label=label,
-                       text=label + (f" · {a['part']}/{a['parts']}쪽 조각" if a["parts"] > 1 else ""))
+                       choice=a.get("choice"), source_pages=pages, text=label + detail)
         assets.append(row)
     return {"assets": [a for a in assets if a["exists"]], "missing": [a["path"] for a in assets if not a["exists"]],
             "capture_state": meta.get("capture_state"), "source_name": meta.get("source_name"),

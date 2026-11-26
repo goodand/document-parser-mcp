@@ -761,7 +761,7 @@ def extract_hwp_table_images(
             ir_kind = "rhwp"
         if sha256_of(src) != source_hash:
             raise ValueError("원본 파일이 표 이미지 추출 중 변경되었습니다.")
-        from .table_images import extract_table_images_by_id, iter_table_nodes
+        from .table_images import iter_table_nodes
 
         run_id = uuid.uuid4().hex
         output_dir = _corpus_dir() / "06table" / source_hash[:24] / run_id
@@ -816,7 +816,9 @@ def extract_hwp_table_images(
             )
             manifest_tmp.replace(output_dir / "manifest.json")
         else:
-            result = extract_table_images_by_id(
+            from .table_selection import extract_selected_table_images
+
+            result = extract_selected_table_images(
                 src,
                 ir,
                 output_dir,
@@ -883,6 +885,7 @@ def extract_hwp_table_images(
             "selected_table_count": selected_count,
             "rendered_count": rendered_count,
             "failed_count": failed_count,
+            "source_page_count": result.get("source_page_count", 0),
             "unknown_table_ids": unknown_ids[:20],
             "unknown_table_id_count": len(unknown_ids),
         }, ensure_ascii=False)

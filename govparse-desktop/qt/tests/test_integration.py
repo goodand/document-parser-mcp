@@ -42,7 +42,8 @@ def test_json_export_then_result_view(real, qtbot, tmp_path):
     qtbot.waitUntil(lambda: "저장 완료" in text(w, "statusText"), timeout=120000)
     out = tmp_path / "합성-json"
     meta = json.loads((out / "document.json").read_text("utf-8"))["govparse_desktop"]
-    assert meta["table_images"]["rendered"] == 3
+    assert meta["table_images"]["tables"] == 3
+    assert meta["table_images"]["source_page_tables"] == 3
     assert (tmp_path / "합성-json.zip").is_file()
     w.switch_tab(result=True)
     lst = find(w, "assetList")
@@ -56,7 +57,7 @@ def test_json_export_then_result_view(real, qtbot, tmp_path):
     shutil.rmtree(out)
     w.load_result(str(tmp_path / "받은 사람" / "합성-json" / "document.json"))
     qtbot.waitUntil(lambda: "저장 후 변경 없음" in text(w, "resNotes"), timeout=60000)
-    _select_first_table_and_check_pixels(w, qtbot)
+    _select_first_table_and_check_pixels(w, qtbot, kind="원본 쪽")
 
 
 def test_moved_result_reopens(real, qtbot, tmp_path):
@@ -78,7 +79,7 @@ def test_moved_result_reopens(real, qtbot, tmp_path):
     _select_first_table_and_check_pixels(w, qtbot)
 
 
-def _select_first_table_and_check_pixels(w, qtbot):
+def _select_first_table_and_check_pixels(w, qtbot, kind="표 이미지"):
     """The picture shown for a table row is the table PNG of this folder: not blank, read from the shown path."""
     from pathlib import Path
 
@@ -86,7 +87,7 @@ def _select_first_table_and_check_pixels(w, qtbot):
     from PySide6.QtGui import QImage
 
     lst = find(w, "assetList")
-    row = next(lst.topLevelItem(i) for i in range(lst.topLevelItemCount()) if lst.topLevelItem(i).text(1) == "표 이미지")
+    row = next(lst.topLevelItem(i) for i in range(lst.topLevelItemCount()) if lst.topLevelItem(i).text(1) == kind)
     lst.setCurrentItem(row)
     f = Path(row.data(0, Qt.UserRole)["file"])
     assert f.is_file() and ("받은 사람" in str(f) or "옮긴 곳 b" in str(f))
