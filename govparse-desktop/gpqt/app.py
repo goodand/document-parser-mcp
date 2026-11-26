@@ -918,6 +918,8 @@ class MainWindow(QMainWindow):
                 kind_text, info = "원본 쪽", txt
             else:
                 kind_text, info = "표 캡처", f"미리보기 {a.get('page')}쪽의 표 영역 (어느 표인지는 확인되지 않음)"
+            if origin in {"table_image", "table_source_page"} and a.get("table_type_label"):
+                info = " · ".join(value for value in (info, a["table_type_label"]) if value)
             it = QTreeWidgetItem([base_name(a["path"]), kind_text, info, src])
             it.setData(0, Qt.UserRole, a)
             self.assets.addTopLevelItem(it)

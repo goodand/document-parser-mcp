@@ -45,7 +45,7 @@ def loaded(window, qtbot, fake_worker, tmp_path):
 ASSETS = [
     {"origin": "embedded_picture", "path": "assets/embedded/bin1.png", "text": "표 2행 1열 칸 → 안쪽 표 1행 1열 · 〈그림 A〉"},
     {"origin": "table_image", "path": "assets/tables/table-aaa-p001.png", "table_id": "s0/b3/t0", "part": 1, "parts": 1,
-     "label": "본문 1번째 표", "text": "본문 1번째 표"},
+     "label": "본문 1번째 표", "table_type_label": "표 유형(추정) 데이터 표", "text": "본문 1번째 표"},
     {"origin": "table_image", "path": "assets/tables/table-bbb-p001.png", "table_id": "s0/b3/t0/c1_0/t0", "part": 1, "parts": 2,
      "label": "본문 1번째 표 › 2행 1열 칸 안 1번째 표", "text": "본문 1번째 표 › 2행 1열 칸 안 1번째 표 · 1/2쪽 조각"},
 ]
@@ -84,7 +84,8 @@ def test_asset_columns_and_rows(window, loaded):
     assert [lst.headerItem().text(i) for i in range(4)] == ["자산", "출처", "위치 / 설명", "원본 파일"]
     rows = _rows(window)
     assert rows[0][:2] == ["bin1.png", "내장 그림"] and rows[0][3] == "합성 문서.hwpx"
-    assert rows[1][1:3] == ["표 이미지", "본문 1번째 표"]
+    assert rows[1][1] == "표 이미지" and rows[1][2].startswith("본문 1번째 표")
+    assert "표 유형(추정) 데이터 표" in rows[1][2]
     assert rows[2][2].endswith("1/2쪽 조각")
 
 

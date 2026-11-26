@@ -562,6 +562,25 @@ def index(json_path: Path) -> dict:
             n["asset"] for n in _pictures(ir) if n.get("asset"))]
         listed += [{"origin": "rendered_table_capture", "page": c.get("page"), "path": c.get("path")}
                    for c in (data.get("desktop_export") or {}).get("table_captures", [])]
+    table_asset_ids = {
+        a.get("table_id") for a in listed
+        if a.get("origin") in {"table_image", "table_source_page"} and a.get("table_id")
+    }
+    table_type_by_id = {table_id: "?" for table_id in table_asset_ids}
+    if table_asset_ids:
+        try:
+            from govparse.table_images import table_index
+            from govparse.table_use import classify
+
+            for table_id, table in table_index(ir).items():
+                if table_id in table_asset_ids:
+                    try:
+                        result = classify(table)
+                        table_type_by_id[table_id] = result if result in {"D", "M", "V", "?"} else "?"
+                    except Exception:  # optional classification must not block older or partial results
+                        pass
+        except Exception:  # optional classification must not block older or partial results
+            pass
     for a in listed:
         f = base / a["path"]
         o = a.get("ocr") or {}
@@ -580,8 +599,17 @@ def index(json_path: Path) -> dict:
                     detail += " · 원본 " + ", ".join(map(str, pages)) + "쪽"
             if a.get("selection_warning"):
                 detail += " · 원본 쪽 대조 미완료"
+            table_type = table_type_by_id.get(a["table_id"], "?")
+            table_type_labels = {
+                "D": "데이터 표",
+                "M": "혼합형",
+                "V": "도식·배치형",
+                "?": "검토 필요",
+            }
             row.update(table_id=a["table_id"], part=a["part"], parts=a["parts"], label=label,
-                       choice=a.get("choice"), source_pages=pages, text=label + detail)
+                       choice=a.get("choice"), source_pages=pages, table_type=table_type,
+                       table_type_label=f"표 유형(추정) {table_type_labels.get(table_type, '검토 필요')}",
+                       text=label + detail)
         assets.append(row)
     return {"assets": [a for a in assets if a["exists"]], "missing": [a["path"] for a in assets if not a["exists"]],
             "capture_state": meta.get("capture_state"), "source_name": meta.get("source_name"),

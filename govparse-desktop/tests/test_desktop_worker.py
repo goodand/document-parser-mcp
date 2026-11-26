@@ -111,6 +111,39 @@ def test_index_lists_assets_with_origin_and_caption(src, tmp_path):
     assert all(Path(a["file"]).is_file() for a in idx["assets"])
     assert any("사업 구성도" in a["text"] for a in emb)
     assert all(a["table_id"] and a["label"] for a in tbl) and idx["convertible"] is True
+    assert all(a["table_type"] in {"D", "M", "V", "?"} for a in tbl)
+    assert all(a["table_type_label"].startswith("표 유형(추정) ") for a in tbl)
+
+
+def test_index_keeps_unknown_type_when_optional_classifier_is_missing(tmp_path, monkeypatch):
+    import sys
+
+    result = tmp_path / "document.json"
+    image = tmp_path / "assets" / "table.png"
+    image.parent.mkdir()
+    image.write_bytes(b"png")
+    ir = {"body": [{
+        "kind": "table", "rows": 2, "cols": 2, "cells": [
+            {"row": 0, "col": 0, "row_span": 1, "col_span": 1,
+             "blocks": [{"kind": "paragraph", "text": "분류"}]},
+            {"row": 0, "col": 1, "row_span": 1, "col_span": 1,
+             "blocks": [{"kind": "paragraph", "text": "결과"}]},
+        ],
+    }]}
+    payload = {
+        "source_ir": ir,
+        "govparse_desktop": {
+            "assets": [{"origin": "table_image", "path": "assets/table.png",
+                        "table_id": "s0/b0/t0", "part": 1, "parts": 1}],
+        },
+    }
+    result.write_text(json.dumps(payload, ensure_ascii=False), "utf-8")
+    monkeypatch.setitem(sys.modules, "govparse.table_use", None)
+
+    row = dw.index(result)["assets"][0]
+
+    assert row["table_type"] == "?"
+    assert row["table_type_label"] == "표 유형(추정) 검토 필요"
 
 
 def test_pad_for_ocr_adds_white_margin(tmp_path):

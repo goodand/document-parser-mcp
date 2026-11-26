@@ -500,6 +500,8 @@ class Desktop : Form {
                 else if (origin == "table_image") { kindText = "표 이미지"; info = txt; }
                 else if (origin == "table_source_page") { kindText = "원본 쪽"; info = txt; }
                 else { kindText = "표 캡처"; info = "미리보기 " + a["page"] + "쪽의 표 영역 (어느 표인지는 확인되지 않음)"; }
+                if ((origin == "table_image" || origin == "table_source_page") && a.ContainsKey("table_type_label") && a["table_type_label"] != null)
+                    info = String.IsNullOrEmpty(info) ? (string)a["table_type_label"] : info + " · " + a["table_type_label"];
                 assets.Items.Add(new ListViewItem(new[] { Path.GetFileName((string)a["path"]), kindText, info, src }) { Tag = a });
             }
             // tables without an image stay visible with the reason, instead of being filled with a similar-looking capture

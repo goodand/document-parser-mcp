@@ -89,6 +89,9 @@ def _select_first_table_and_check_pixels(w, qtbot, kind="표 이미지"):
     lst = find(w, "assetList")
     row = next(lst.topLevelItem(i) for i in range(lst.topLevelItemCount()) if lst.topLevelItem(i).text(1) == kind)
     lst.setCurrentItem(row)
+    assert any(label in row.text(2) for label in
+               ("표 유형(추정) 데이터 표", "표 유형(추정) 혼합형",
+                "표 유형(추정) 도식·배치형", "표 유형(추정) 검토 필요"))
     f = Path(row.data(0, Qt.UserRole)["file"])
     assert f.is_file() and ("받은 사람" in str(f) or "옮긴 곳 b" in str(f))
     shown = find(w, "assetPreview").pixmap().toImage()

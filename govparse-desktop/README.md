@@ -49,3 +49,5 @@ The installer and bundled runtime are generated under dist/. They are build outp
 - samples/ contains generated synthetic fixtures and their generators.
 
 Real source documents, credentials, local configuration, compiled installers, and model weights do not belong in this repository.
+
+결과 보기의 ‘표 유형(추정)’ 판정 기준과 실문서 검증 수치는 [GUI 인계 문서](../docs/table-use-gui-handoff.md)에 있습니다.
