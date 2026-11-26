@@ -15,10 +15,20 @@
 ## 2. 다른 PC에서 준비할 것
 1. 저장소를 받고 이 브랜치를 체크아웃합니다.
 2. `govparse-desktop`에서 `uv sync`로 가상환경을 만듭니다. `pyproject.toml`에 PySide6와 pytest-qt가 있습니다. 표 그림 읽기까지 빌드하려면 `rapid-table==3.0.2`도 그 환경에 있어야 합니다.
-3. **모델 가중치는 저장소에 없습니다.** 빌드가 SHA-256으로 확인합니다.
-   - OCR 3개: RapidOCR 3.10.0 기본 모델. 위치는 `config.json`의 `ocr_models` 또는 LM Studio 설정에서 찾습니다. 파일 이름과 해시는 `build.py`의 `OCR_MODELS`에 있습니다.
-   - 표 구조 1개: `models/table-structure/slanet-plus.onnx`(저장소 루트 기준), SHA-256 `d57a942af6a2f57d6a4a0372573c696a2379bf5857c45e2ac69993f3b334514b`. 받는 곳: `https://www.modelscope.cn/models/RapidAI/RapidTable/resolve/v2.0.0/slanet-plus.onnx`.
-   - 표 구조 모델이나 `rapid-table`이 없으면 빌드는 그대로 되고, 앱에서 "이미지에서 표 읽기" 단추만 숨습니다.
+3. **모델 가중치 4개는 저장소에 없습니다.** 아래에서 받아 놓습니다. 빌드가 SHA-256으로 확인하고, 다르면 멈춥니다.
+
+   | 파일 | 놓을 위치 | SHA-256 | 받는 곳 |
+   |---|---|---|---|
+   | `ch_PP-OCRv5_det_mobile.onnx` | OCR 모델 폴더 | `4d97c44a20d30a81aad087d6a396b08f786c4635742afc391f6621f5c6ae78ae` | `https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.10.0/onnx/PP-OCRv5/det/ch_PP-OCRv5_det_mobile.onnx` |
+   | `korean_PP-OCRv5_rec_mobile.onnx` | OCR 모델 폴더 | `cd6e2ea50f6943ca7271eb8c56a877a5a90720b7047fe9c41a2e541a25773c9b` | `https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.10.0/onnx/PP-OCRv5/rec/korean_PP-OCRv5_rec_mobile.onnx` |
+   | `ch_PP-LCNet_x0_25_textline_ori_cls_mobile.onnx` | OCR 모델 폴더 | `54379ae5174d026780215fc748a7f31910dee36818e63d49e17dc598ecc82df7` | `https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.10.0/onnx/PP-OCRv5/cls/ch_PP-LCNet_x0_25_textline_ori_cls_mobile.onnx` |
+   | `slanet-plus.onnx` | `<저장소>/models/table-structure/` | `d57a942af6a2f57d6a4a0372573c696a2379bf5857c45e2ac69993f3b334514b` | `https://www.modelscope.cn/models/RapidAI/RapidTable/resolve/v2.0.0/slanet-plus.onnx` |
+
+   - OCR 모델 폴더는 아무 곳이나 됩니다. `govparse-desktop/config.json`(저장소에 넣지 않는 파일)에 적습니다:
+     `{"engine_python": "<가상환경의 python.exe>", "engine_src": "<저장소>/src", "ocr_models": "<OCR 모델 폴더>"}`
+   - 받는 예: `curl -L -o slanet-plus.onnx <받는 곳>` 뒤 `Get-FileHash slanet-plus.onnx`로 해시를 비교합니다.
+   - 2026-11-26에 한 PC에서는 `www.modelscope.cn` 접속이 인증서 오류로 실패했습니다. 그럴 때는 다른 네트워크에서 받거나, 모델이 있는 PC에서 파일을 복사합니다. 해시만 같으면 됩니다.
+   - 표 구조 모델이나 `rapid-table`이 없으면 빌드는 그대로 되고, 앱에서 "이미지에서 표 읽기" 단추만 숨습니다. OCR 모델 3개가 없으면 빌드가 멈춥니다.
 
 ## 3. 확인 명령
 ```
