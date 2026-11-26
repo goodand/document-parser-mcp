@@ -174,7 +174,7 @@ class TablePanel : Panel {
     readonly AxButton undoBtn = new AxButton("되돌리기", AxKind.Secondary), resetBtn = new AxButton("처음 읽은 표로", AxKind.Secondary), saveBtn = new AxButton("저장", AxKind.Primary);
     readonly ContextMenuStrip menu = new ContextMenuStrip();
     readonly ToolTip tips = new ToolTip();
-    Entry reading; bool filling;
+    Entry reading; bool filling, canReadImages;
 
     public TablePanel(Worker worker, Action<string, Color> say, Action<string, RectangleF?> showImage) {
         this.worker = worker; this.say = say; this.showImage = showImage;
@@ -210,8 +210,8 @@ class TablePanel : Panel {
     // tables/<png name>.image.json in the same result folder (assets/tables/<png> -> tables/)
     static string ImagePath(string png) { return Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(Path.GetDirectoryName(png))), "tables", Path.GetFileNameWithoutExtension(png) + ".image.json"); }
 
-    public void Load(ArrayList assets) {
-        entries.Clear(); reading = null;
+    public void Load(ArrayList assets, bool canReadImages = false) {
+        entries.Clear(); reading = null; this.canReadImages = canReadImages;
         var seen = new HashSet<string>();
         foreach (Dictionary<string, object> a in assets ?? new ArrayList()) {
             string tid = Str(a, "table_id");
@@ -267,7 +267,7 @@ class TablePanel : Panel {
         saveBtn.Enabled = d != null && d.CanSave;
         saveBtn.SetText(d != null && d.Status == "review" ? "확인 후 저장" : "저장");
         string why; bool can = CanRead(cur, out why);
-        readBar.Visible = cur != null && !(d != null && d.Status == "ready");   // source cells first: never read over them
+        readBar.Visible = canReadImages && cur != null && !(d != null && d.Status == "ready");   // source cells first: never read over them
         read.Enabled = can; read.SetText(reading != null ? "표 읽는 중…" : d != null && d.Status == "review" ? "이미지에서 다시 읽기" : "이미지에서 표 읽기");
         tips.SetToolTip(read, why);
     }

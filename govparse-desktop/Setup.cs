@@ -14,7 +14,7 @@ using System.Collections.Generic;
 //   Setup.exe --extract DIR   unpack only (build test)
 //   Setup.exe --uninstall     remove (also what Settings > Apps runs)
 class Setup {
-    const string Name = "GovParse Desktop", Version = "0.2.0";
+    const string Name = "GovParse Desktop", Version = "0.3.0";
     const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\GovParseDesktop";
     static string Root { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), Name); } }
     static string AppDir { get { return Path.Combine(Root, "app"); } }

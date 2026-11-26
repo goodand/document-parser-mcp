@@ -398,6 +398,32 @@ def table_candidates(path: Path, ir: dict, out: Path, progress) -> dict | None:
     return {"tables": len(nodes), "ready": len(built), "failed": len(nodes) - len(built)}
 
 
+def table_model() -> Path | None:
+    """The table-structure model: the app's own copy (models/table-structure) first, else the engine's default places."""
+    from . import ocr_engines
+
+    models = ocr_engines.bundled_models()
+    if models is not None and (models.parent / "table-structure" / "slanet-plus.onnx").is_file():
+        return models.parent / "table-structure" / "slanet-plus.onnx"
+    try:
+        from govparse.image_table import _resolve_model
+
+        return _resolve_model(None)
+    except Exception:  # noqa: BLE001 - no engine module or no model file
+        return None
+
+
+def can_read_table_images() -> bool:
+    """True when the engine module, its table-structure package and the model file are all present."""
+    from importlib.util import find_spec
+
+    try:
+        return (find_spec("govparse.image_table") is not None and find_spec("rapid_table") is not None
+                and table_model() is not None)
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _image_table_reader():
     """The engine's image -> table grid function (RapidTable SLANetPlus), or None for an engine without it."""
     try:
@@ -420,9 +446,8 @@ def image_table(png: Path, out: Path, with_ocr: bool = True, table_id: str | Non
         raise RuntimeError("이 엔진에는 이미지에서 표를 읽는 기능이 없습니다 (govparse.image_table)")
     png, out = Path(png), Path(out)
     kw: dict = {"include_ocr": bool(with_ocr)}
-    models = ocr_engines.bundled_models()
-    if models is not None and (models.parent / "table-structure" / "slanet-plus.onnx").is_file():
-        kw["model_path"] = models.parent / "table-structure" / "slanet-plus.onnx"
+    if table_model() is not None:
+        kw["model_path"] = table_model()
     if with_ocr:
         kw["ocr_model_dir"] = ocr_engines.rapidocr_runtime()[1]
     cand = read(png, **kw)
@@ -760,7 +785,8 @@ def index(json_path: Path) -> dict:
     return {"assets": [a for a in assets if a["exists"]], "missing": [a["path"] for a in assets if not a["exists"]],
             "capture_state": meta.get("capture_state"), "source_name": meta.get("source_name"),
             "table_images": meta.get("table_images"),
-            "integrity": verify_manifest(base), "convertible": True}
+            "integrity": verify_manifest(base), "convertible": True,
+            "can_read_table_images": can_read_table_images()}
 
 
 OCR_PAD = 60  # px of white margin; measured: text touching the picture border is cut by the detector

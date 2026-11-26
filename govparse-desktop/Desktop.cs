@@ -544,7 +544,7 @@ class Desktop : Form {
                 missing += changed;
             }
             SetResState(saved, String.Format("미리보기 성공 · 자산 {0}개{1}", assets.Items.Count, missing > 0 ? " · 파일 없는 자산 " + missing + "개" : assets.Items.Count == 0 ? " (추출된 PNG 0개)" : ""), missing == 0);
-            tables.Load((ArrayList)idx["assets"]);
+            tables.Load((ArrayList)idx["assets"], idx.ContainsKey("can_read_table_images") && true.Equals(idx["can_read_table_images"]));
             tableBtn.Enabled = tables.Count > 0;
             tableTip.SetToolTip(tableBtn, tables.Count > 0 ? "표를 확인하고 고칩니다 (원본 칸 또는 이미지에서 읽은 표)" : "이 결과에는 표 이미지가 없습니다");
             if (assets.Items.Count > 0) assets.Items[0].Selected = true;

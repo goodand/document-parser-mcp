@@ -37,6 +37,7 @@ class TableEditPanel(QWidget):
         self.read_image = read_image          # (png, out, with_ocr, table_id, done, fail) -> None, runs in background
         self.reading = None                   # entry being read from its image
         self._sha: dict[str, str] = {}
+        self.can_read_images = True
         self.entries: list[dict] = []      # {asset, label, doc | None, reason}
         self._filling = False
         self.list = QTreeWidget()
@@ -106,11 +107,12 @@ class TableEditPanel(QWidget):
         self.grid.currentCellChanged.connect(lambda *_: self._highlight())
 
     # ── data ─────────────────────────────────────────────────────────────
-    def load(self, assets) -> int:
+    def load(self, assets, can_read_images: bool = True) -> int:
         """Table-image assets of a result; returns how many can be edited."""
         self.entries = []
         seen = set()
         self.reading = None
+        self.can_read_images = can_read_images
         for a in assets:
             if a.get("origin") not in ("table_image", "table_source_page") or not a.get("table_id") or a.get("table_id") in seen:
                 continue
@@ -198,7 +200,7 @@ class TableEditPanel(QWidget):
         self.save_btn.setEnabled(bool(d and d.can_save))
         self.save_btn.setText("확인 후 저장" if d is not None and d.status == "review" else "저장")
         can, why = self.can_read(e)
-        self.read_btn.setVisible(e is not None and not (d is not None and d.status == "ready"))
+        self.read_btn.setVisible(self.can_read_images and e is not None and not (d is not None and d.status == "ready"))
         self.read_ocr.setVisible(self.read_btn.isVisible())
         self.read_btn.setEnabled(can)
         self.read_btn.setToolTip(why)

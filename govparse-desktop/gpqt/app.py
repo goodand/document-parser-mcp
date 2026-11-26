@@ -972,7 +972,7 @@ class MainWindow(QMainWindow):
         if rows:
             self.assets.setCurrentItem(self.assets.topLevelItem(0))
         self.result_ocr.refresh()
-        self.table_panel.load(idx.get("assets") or [])
+        self.table_panel.load(idx.get("assets") or [], idx.get("can_read_table_images", True))
         tables = len(self.table_panel.entries)
         self.btn_table_edit.setEnabled(tables > 0)
         self.btn_table_edit.setToolTip("" if tables else "이 결과에는 표 이미지가 없습니다")

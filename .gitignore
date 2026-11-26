@@ -24,3 +24,7 @@ build/
 *.log
 .DS_Store
 Thumbs.db
+
+# model weights are never committed (the desktop build pins them by SHA-256)
+/models/
+*.onnx

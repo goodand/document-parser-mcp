@@ -60,6 +60,24 @@ for name in ('rapidocr','onnxruntime','opencv-python-headless','numpy','pyclippe
         shutil.copy2(src,dest)
         if 'license' in src.name.lower() or 'copying' in src.name.lower():
             shutil.copy2(src,licenses/(name+'-'+src.name))
+# Table reading from a picture (표 고치기 › 이미지에서 표 읽기): RapidTable. Optional: without the package or the
+# model file on this PC the app is built without it and hides the button.
+TABLE_MODEL=('slanet-plus.onnx','d57a942af6a2f57d6a4a0372573c696a2379bf5857c45e2ac69993f3b334514b')
+_table_model=next((p for p in (base.parent/'models'/'table-structure'/TABLE_MODEL[0], base/'models'/'table-structure'/TABLE_MODEL[0]) if p.is_file()),None)
+try: _table_dist=md.distribution('rapid-table')
+except md.PackageNotFoundError: _table_dist=None
+ship_table=_table_dist is not None and _table_model is not None
+if ship_table:
+    for file in _table_dist.files:
+        if '..' in file.parts or '__pycache__' in file.parts or file.suffix in ('.pyc','.onnx','.ort'): continue
+        src=Path(_table_dist.locate_file(file))
+        if not src.is_file():continue
+        dest=site/file
+        dest.parent.mkdir(parents=True,exist_ok=True)
+        shutil.copy2(src,dest)
+        if 'license' in src.name.lower(): shutil.copy2(src,licenses/('rapid-table-'+src.name))
+else:
+    print('note: built WITHOUT image table reading (rapid-table package or models/table-structure/slanet-plus.onnx not found)')
 for name in ('msvcp140.dll','msvcp140_1.dll'):  # onnxruntime needs the C++ runtime; a clean PC may not have it
     dll=Path(r'C:\Windows\System32')/name
     if dll.is_file(): shutil.copy2(dll,runtime/name)
@@ -97,6 +115,23 @@ for name,(sha,sub) in OCR_MODELS.items():
 # What actually ships: exactly these weights and nothing else.
 shipped=sorted(p.relative_to(stage).as_posix() for p in stage.rglob('*') if p.suffix.lower() in ('.onnx','.ort'))
 expected=sorted('models/rapidocr/'+n for n in OCR_MODELS)
+if ship_table:
+    import hashlib as _h
+    got=_h.sha256(_table_model.read_bytes()).hexdigest()
+    if got!=TABLE_MODEL[1]: raise SystemExit(f'table model: SHA-256 {got} is not the pinned RapidTable v2.0.0 file')
+    (stage/'models'/'table-structure').mkdir(parents=True)
+    shutil.copy2(_table_model,stage/'models'/'table-structure'/TABLE_MODEL[0])
+    (licenses/'TABLE-MODEL.md').write_text(chr(10).join([
+        '# 동봉한 표 구조 모델 (Bundled table-structure model)','',
+        '| file | SHA-256 | source |','|---|---|---|',
+        f'| {TABLE_MODEL[0]} | {TABLE_MODEL[1]} | https://www.modelscope.cn/models/RapidAI/RapidTable/resolve/v2.0.0/slanet-plus.onnx |','',
+        'SLANet_plus is the table-structure model of PaddleX (PaddlePaddle), converted to ONNX and distributed by the',
+        'RapidTable project. Unmodified. RapidTable (code) is Apache-2.0, see rapid-table-LICENSE in this folder;',
+        'PaddleX is Apache-2.0 (https://github.com/PaddlePaddle/PaddleX). No separate terms for the weights were found',
+        'when this build was made (2026-11-26); the ModelScope model card could not be read then.',''])+chr(10),'utf-8')
+    subprocess.run([str(runtime/'python.exe'),'-I','-c','import rapid_table; from govparse.image_table import extract_table_from_image'],check=True)
+    shipped=sorted(p.relative_to(stage).as_posix() for p in stage.rglob('*') if p.suffix.lower() in ('.onnx','.ort'))
+    expected=sorted(expected+['models/table-structure/'+TABLE_MODEL[0]])
 if shipped!=expected: raise SystemExit('unexpected model files in the app: '+', '.join(sorted(set(shipped)^set(expected))))
 print('shipped models:',', '.join(shipped))
 csc=r'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
