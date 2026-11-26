@@ -28,18 +28,14 @@ _PATCH_SIZE = (24, 24)
 def _picture_blocks(table: dict[str, Any], table_id: str, include_descendants: bool):
     """Yield image placements with their owning table, not repeated IDs alone."""
     for cell in table.get("cells", []):
+        child_index = 0
         for block_index, block in enumerate(cell.get("blocks", [])):
             kind = block.get("kind")
             if kind == "picture":
                 yield table_id, cell, block_index, block
             elif kind == "table" and include_descendants:
-                nested_id = f"{table_id}/c{cell.get('row', 0)}_{cell.get('col', 0)}/t{
-                    sum(
-                        1
-                        for prior in cell.get('blocks', [])[:block_index]
-                        if prior.get('kind') == 'table'
-                    )
-                }"
+                nested_id = f"{table_id}/c{cell.get('row', 0)}_{cell.get('col', 0)}/t{child_index}"
+                child_index += 1
                 yield from _picture_blocks(block, nested_id, include_descendants)
 
 
@@ -67,42 +63,6 @@ def _correlation(left: np.ndarray, right: np.ndarray) -> float:
     if denominator < 1e-6:
         return 1.0 if float(np.mean(np.abs(left - right))) < 0.01 else 0.0
     return max(-1.0, min(1.0, float(np.dot(a, b) / denominator)))
-
-
-def _features(image: Image.Image) -> tuple[np.ndarray, np.ndarray]:
-    rgb = np.asarray(image.resize(_PATCH_SIZE, Image.Resampling.LANCZOS), dtype=np.float32) / 255.0
-    gray = 0.299 * rgb[:, :, 0] + 0.587 * rgb[:, :, 1] + 0.114 * rgb[:, :, 2]
-    gx = np.diff(gray, axis=1, append=gray[:, -1:])
-    gy = np.diff(gray, axis=0, append=gray[-1:, :])
-    edges = np.stack((gx, gy), axis=2)
-    return rgb, edges
-
-
-def _feature_score(source: Image.Image, patch: Image.Image) -> dict[str, float]:
-    source_rgb, source_edges = _features(source)
-    patch_rgb, patch_edges = _features(patch)
-    source_gray = (
-        source_rgb[:, :, 0] * 0.299 + source_rgb[:, :, 1] * 0.587 + source_rgb[:, :, 2] * 0.114
-    )
-    patch_gray = (
-        patch_rgb[:, :, 0] * 0.299 + patch_rgb[:, :, 1] * 0.587 + patch_rgb[:, :, 2] * 0.114
-    )
-    gray_corr = _correlation(source_gray, patch_gray)
-    edge_corr = _correlation(source_edges, patch_edges)
-    color_similarity = max(0.0, 1.0 - float(np.mean(np.abs(source_rgb - patch_rgb))))
-    # Correlations are remapped to [0,1]. The color term distinguishes otherwise
-    # similar monochrome placeholders while edges help with resized/antialiased art.
-    score = (
-        0.50 * ((gray_corr + 1.0) / 2.0)
-        + 0.30 * color_similarity
-        + 0.20 * ((edge_corr + 1.0) / 2.0)
-    )
-    return {
-        "score": float(max(0.0, min(1.0, score))),
-        "luminance_correlation": float(gray_corr),
-        "edge_correlation": float(edge_corr),
-        "color_similarity": float(color_similarity),
-    }
 
 
 def score_picture_match(
@@ -158,12 +118,16 @@ def score_picture_match(
 
     try:
         import cv2
-    except ImportError:
-        cv2 = None
-    if cv2 is None:
-        return _score_picture_match_numpy(
-            source, candidate, original_size, scale, threshold, aspect
-        )
+    except (ImportError, OSError):
+        # Do not issue positive evidence from an uncalibrated alternate matcher.
+        return {
+            "score": 0.0,
+            "likely_present": False,
+            "bbox": None,
+            "reason": "picture_matcher_unavailable",
+            "source_size": list(source.size),
+            "candidate_size": list(original_size),
+        }
 
     candidate_bgr = cv2.cvtColor(np.asarray(candidate, dtype=np.uint8), cv2.COLOR_RGB2BGR)
     source_bgr = cv2.cvtColor(np.asarray(source, dtype=np.uint8), cv2.COLOR_RGB2BGR)
@@ -253,93 +217,6 @@ def score_picture_match(
         "source_size": list(source.size),
         "candidate_size": list(original_size),
         "candidate_search_size": list(candidate.size),
-        "regions_tested": tested,
-    }
-
-
-def _window_sums(integral, height, width):
-    """Sum every valid window using a top- and left-padded integral image."""
-    return (
-        integral[height:, width:]
-        - integral[:-height, width:]
-        - integral[height:, :-width]
-        + integral[:-height, :-width]
-    )
-
-
-def _score_picture_match_numpy(source, candidate, original_size, scale, threshold, aspect):
-    """Locate templates by normalized grayscale correlation, then check RGB and edges."""
-    # Bound the FFT size independently of the input PNG's render resolution.
-    search = candidate.copy()
-    search.thumbnail((300, 300), Image.Resampling.LANCZOS)
-    width, height = search.size
-    gray = np.asarray(search.convert("L"), dtype=np.float64)
-    spectrum = np.fft.rfft2(gray)
-    summed = np.pad(gray.cumsum(0).cumsum(1), ((1, 0), (1, 0)))
-    squared = np.pad((gray * gray).cumsum(0).cumsum(1), ((1, 0), (1, 0)))
-    max_width = min(width, int(height * aspect))
-    if max_width < 1:
-        return {
-            "score": 0.0,
-            "likely_present": False,
-            "bbox": None,
-            "reason": "no_candidate_region",
-        }
-    min_width = min(max_width, max(9, round(max_width * 0.06)))
-    # Thin borders lose correlation when opposite edges miss by several pixels.
-    # At this bounded search resolution, stepping by two pixels covers both edges.
-    widths = sorted({*range(min_width, max_width + 1, 2), max_width})
-    source_gray = source.convert("L")
-    best = None
-    tested = 0
-    for w in widths:
-        h = max(1, round(w / aspect))
-        if h > height:
-            continue
-        template = np.array(source_gray.resize((w, h), Image.Resampling.BOX), dtype=np.float64)
-        template -= template.mean()
-        norm = np.linalg.norm(template)
-        if norm < 2 * np.sqrt(w * h):
-            continue
-        windows = _window_sums(summed, h, w)
-        variance = _window_sums(squared, h, w) - windows * windows / (h * w)
-        denominator = norm * np.sqrt(np.maximum(variance, 0))
-        # Circular correlation equals linear correlation at all fully contained positions.
-        template_fft = np.fft.rfft2(template, s=gray.shape, axes=(0, 1))
-        raw = np.fft.irfft2(spectrum * template_fft.conjugate(), s=gray.shape, axes=(0, 1))
-        valid = raw[: height - h + 1, : width - w + 1]
-        corr = np.divide(valid, denominator, out=np.zeros_like(valid), where=denominator > 1e-6)
-        y, x = np.unravel_index(np.argmax(corr), corr.shape)
-        coarse = (x, y, x + w, y + h)
-        ratios = (candidate.width / width, candidate.height / height) * 2
-        box = tuple(round(v * ratio) for v, ratio in zip(coarse, ratios, strict=True))
-        metrics = _feature_score(source, candidate.crop(box))
-        correlation = float(np.clip(corr[y, x], 0, 1))
-        score = 0.7 * correlation + 0.3 * metrics["score"]
-        tested += 1
-        if best is None or score > best["score"]:
-            best = {
-                **metrics,
-                "score": score,
-                "template_correlation": correlation,
-                "bbox": [round(v / scale) for v in box],
-                "patch_size": [w, h],
-            }
-    if best is None:
-        return {
-            "score": 0.0,
-            "likely_present": False,
-            "bbox": None,
-            "reason": "no_candidate_region",
-        }
-    return {
-        **best,
-        "likely_present": best["score"] >= threshold,
-        "threshold": threshold,
-        "backend": "numpy_multiscale_template_match",
-        "source_size": list(source.size),
-        "candidate_size": list(original_size),
-        "candidate_search_size": list(search.size),
         "regions_tested": tested,
     }
 

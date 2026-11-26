@@ -71,6 +71,8 @@ for module in ('image_ocr.py', 'table_selection.py'):
         raise SystemExit(f'engine module missing from the desktop build: {engine_package / module}')
 shutil.rmtree(site/'govparse',ignore_errors=True)
 shutil.copytree(engine_package,site/'govparse',ignore=shutil.ignore_patterns('__pycache__','*.pyc'))
+subprocess.run([str(runtime/'python.exe'), '-I', '-c',
+                'import cv2; from govparse.table_selection import extract_selected_table_images'], check=True)
 if not _cfg.ocr_models: raise SystemExit('RapidOCR model folder not found; set ocr_models in config.json')
 # The exact weights shipped: name -> SHA-256 from RapidOCR 3.10.0 default_models.yaml (its official download list).
 OCR_MODELS={

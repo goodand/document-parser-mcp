@@ -81,6 +81,9 @@ def _publish(files, destination, temp):
 
 def extract_selected_table_images(source, ir, out_dir, table_ids=None):
     """Write selected PNGs and publish the corresponding manifest last."""
+    # The PDF library writes its optional layout recommendation to stdout.
+    # MCP reserves that stream for JSON-RPC frames.
+    pymupdf.no_recommend_layout()
     source, out_dir = Path(source), Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     with TemporaryDirectory(dir=out_dir) as scratch:

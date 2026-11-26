@@ -8,7 +8,7 @@ the original and checks that the config has not changed concurrently.
 In PowerShell, run:
 
 ```powershell
-python "C:\Users\INTEC\Documents\Codex\2026-11-23\new-chat\work\publish-selected-diffs\scripts\deploy_lmstudio.py"
+python .\scripts\deploy_lmstudio.py
 ```
 
 Then restart LM Studio so it reloads the MCP server. The default source path is
